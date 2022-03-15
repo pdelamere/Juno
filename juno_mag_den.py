@@ -8,7 +8,7 @@ from matplotlib.ticker import (MultipleLocator, AutoMinorLocator)
 import csv
 import pathlib
 from juno_functions import _get_files
-
+import scipy
 
 myatan2 = np.vectorize(m.atan2)
 Rj = 7.14e4
@@ -29,6 +29,48 @@ class MagClass:
         self.r = R
         self.lat = lat
         self.t = t
+        self.z_cent = 0.0
+
+        self.sys_3_data()
+        
+    def sys_3_data(self):
+        for year in ['2016', '2017', '2018', '2019', '2020']:
+            spice.furnsh(f'/data/juno_spacecraft/data/meta_kernels/juno_{year}.tm')
+        
+        index_array = self.t
+        et_array = [spice.utc2et(i) for i in index_array.strftime('%Y-%m-%dT%H:%M:%S')]
+        positions, lt = spice.spkpos('JUNO', et_array,
+                                     'IAU_JUPITER', 'NONE', 'JUPITER')
+        rad = np.array([])
+        lat = np.array([])
+        lon = np.array([])
+        for vector in positions:
+            r, la, lo = spice.recsph(vector)
+            rad = np.append(rad, r)
+            lat = np.append(lat, la*180/np.pi)
+            lon = np.append(lon, lo*180/np.pi)
+        
+        x = np.array(positions.T[0])
+        y = np.array(positions.T[1])
+        z = np.array(positions.T[2])
+        spice.kclear()
+        
+        deg2rad = np.pi/180
+        a = 1.66*deg2rad
+        b = 0.131
+        R = np.sqrt(x**2 + y**2 + z**2)/7.14e4
+        c = 1.62
+        d = 7.76*deg2rad
+        e = 249*deg2rad
+        CentEq2 = (a*np.tanh(b*R - c) + d)*np.sin(lon*deg2rad - e)
+        self.z_cent = positions.T[2]/7.14e4 - R*np.sin(CentEq2)
+        #self.R = R
+        #temp_df = pd.DataFrame({'radial_3': rad/7.14e4, 'lon_3': lon,
+        #                        'lat_3': lat, 'eq_dist': z_equator}, index=index_array)
+        
+        #self.q_kaw_df = pd.concat([self.q_kaw_df.sort_index(), temp_df.sort_index()], axis=1)
+        return 
+
         
 class DenClass:
     def __init__(self, timeStart, timeEnd):
@@ -131,7 +173,7 @@ class JadClass:
         print('getting ion data....')
         jadeIon.getIonData()
         print('ion data retrieved...')
-        plt.figure()
+        #plt.figure()
         #if date in jadeIon.dataDict.keys(): #Ion spectrogram portion
         jadeIonData = jadeIon.dataDict
         jadeIonData = jadeIon.ion_df  
@@ -284,7 +326,7 @@ def get_B_profiles_2(b,wh):
     plt.show()
 
 
-def get_B_dB_profiles_2(b,winsz,wh,whjad,j,n):
+def get_B_dB_profiles_2(b,winsz,wh,whjad,j,n,orbit):
 
     fig, ax = plt.subplots(3,1,sharex=True)
     Br_bar = smooth(b.Br,winsz)
@@ -294,6 +336,8 @@ def get_B_dB_profiles_2(b,winsz,wh,whjad,j,n):
         
     bpar = (Br_bar*b.Br + Btheta_bar*b.Btheta + Bphi_bar*b.Bphi)/btot_bar
     bperp2 = b.btot**2 - bpar**2
+
+    ax[0].set_title('orbit = '+str(orbit))
     
 #    ax[0].plot(b.t[wh],b.Br[wh],label='$B_r$')
 #    ax[0].plot(b.t[wh],b.Btheta[wh],label='$B_\\theta$')
@@ -328,8 +372,410 @@ def get_B_dB_profiles_2(b,winsz,wh,whjad,j,n):
     ax[2].set_xlim([np.min(j.jad_tm),np.max(j.jad_tm)])
 
     
+    #plt.show()
+
+    tpj = j.jad_tm[j.R == j.R.min()]
+    
+    wh1 = np.logical_and(np.logical_and(j.R > 1.5, j.jad_tm < tpj[0]), j.bc_id == 1)
+    wh2 = np.logical_and(np.logical_and(j.R > 1.5, j.jad_tm > tpj[0]), j.bc_id == 1)
+    
+    fig, ax = plt.subplots(2,1,sharex=True)    
+    ax[0].plot(b.r[b.wh_in],Br_bar[b.wh_in],label='$B_r$')
+    ax[0].plot(b.r[b.wh_in],Btheta_bar[b.wh_in],label='$B_\\theta$')
+    ax[0].plot(b.r[b.wh_in],Bphi_bar[b.wh_in],label='$B_\phi$')
+    ax[0].set_ylabel('B (nT)')
+    ax[0].plot(b.r[b.wh_in],bperp2[b.wh_in],'k',label='$B_\perp^2$')
+    ax[0].plot(b.r[b.wh_in],bpar[b.wh_in],label='$B_\parallel$')
+    ax[0].legend(loc="best")
+    ax[0].set_title('in bound')
+    ax[0].set_ylim([-70,70])
+    ax[1].plot(j.R[wh1],smooth(j.jad_mean[wh1],10))
+    ax[1].set_yscale('log')
+    ax[1].set_ylabel('Jade mean flux')
+
+    fig, ax = plt.subplots(2,1,sharex=True)    
+    ax[0].plot(b.r[b.wh_out],Br_bar[b.wh_out],label='$B_r$')
+    ax[0].plot(b.r[b.wh_out],Btheta_bar[b.wh_out],label='$B_\\theta$')
+    ax[0].plot(b.r[b.wh_out],Bphi_bar[b.wh_out],label='$B_\phi$')
+    ax[0].set_ylabel('B (nT)')
+    ax[0].plot(b.r[b.wh_out],bperp2[b.wh_out],'k',label='$B_\perp^2$')
+    ax[0].plot(b.r[b.wh_out],bpar[b.wh_out],label='$B_\parallel$')
+    ax[0].legend(loc="best")
+    ax[0].set_title('out bound')
+    ax[0].set_ylim([-70,70])
+    ax[1].plot(j.R[wh2],smooth(j.jad_mean[wh2],10))
+    ax[1].set_yscale('log')
+    ax[1].set_ylabel('Jade mean flux')
+
+    #plt.show()
+
+def get_jade_variation():
+    plt.close('all')
+    orbitsData = ['2016-07-31T19:46:02',
+                    '2016-09-23T03:44:48',
+                    '2016-11-15T05:36:45',
+                    '2017-01-07T03:11:30',
+                    '2017-02-28T22:55:48',
+                    '2017-04-22T19:14:57',
+                    '2017-06-14T15:58:35',
+                    '2017-08-06T11:44:04',
+                    '2017-09-28T07:51:01',
+                    '2017-11-20T05:57:23',
+                    '2018-01-12T03:52:42',
+                    '2018-03-05T23:55:41',
+                    '2018-04-27T19:36:40',  
+                    '2018-06-19T17:30:40',
+                    '2018-08-11T15:18:43',
+                    '2018-10-03T10:58:52',   
+                    '2018-11-25T07:01:26',
+                    '2019-01-17T05:19:21',   
+                    '2019-03-11T02:48:11',   
+                    '2019-05-02T22:18:47',   
+                    '2019-06-24T18:01:57',   
+                    '2019-08-16T16:01:52',   
+                    '2019-10-08T12:52:15',   
+                    '2019-11-30T07:39:10',
+                    '2020-01-22T05:44:55',   
+                    '2020-03-15T03:44:40',   
+                    '2020-05-07T00:16:41',   
+                    '2020-06-28T20:24:51',   
+                    '2020-08-20T16:08:49',   
+                    '2020-10-12T14:05:43',
+                    '2020-12-04T11:37:23',   
+                    '2021-01-26T07:36:06',
+                    '2021-03-20 08:39:35',
+                    '2021-05-12 15:29:09']   
+
+    df = pd.read_csv('./mSWiM/mSWiM_2017.csv')    
+    df.columns = ['odate','year','doy','month','day','hour','dphi','r','rho','vr','vt','vn','T','br','bt','bn']
+    tm_df = pd.DataFrame({'year': df['year'], 'month': df['month'], 'day': df['day'], 'hour': df['hour']})
+    tm = pd.to_datetime(tm_df)
+    df['tm'] = tm
+    df = df.set_index('tm')
+    df1 = pd.read_csv('./mSWiM/mSWiM_2018.csv')    
+    df1.columns = ['odate','year','doy','month','day','hour','dphi','r','rho','vr','vt','vn','T','br','bt','bn']
+    tm_df = pd.DataFrame({'year': df1['year'], 'month': df1['month'], 'day': df1['day'], 'hour': df1['hour']})
+    tm = pd.to_datetime(tm_df)
+    df1['tm'] = tm
+    df1 = df1.set_index('tm')
+
+    df = df.append(df1)
+    
+    rhov2 = df.rho*df.vr*df.vr
+    
+    diff1 = []
+    diff2 = []
+    diff3 = []
+    diff = []
+
+    j_c_flx = pd.Series()
+    j_c_flx_max = pd.Series()
+    
+    for orbit in range(4,5):
+        
+        timeStart = orbitsData[orbit]
+        timeEnd = orbitsData[orbit+1]
+
+        print('orbit...',orbit)
+        
+        Rj = 7.14e4
+    
+        filename = './jad_mean_orbit_'+str(orbit)+'.pkl'
+        picklefile = open(filename,'rb')
+        j = pickle.load(picklefile)
+
+        j.jad_mean[np.isnan(j.jad_mean)] = 0.0
+        tpj = j.jad_tm[j.R == j.R.min()]
+        
+        #mask = (j.R > 20) & (j.R < 100.0) & (j.jad_tm < tpj[0]) & (j.bc_id == 1) & (np.logical_not(np.isnan(j.jad_mean))) & (j.jad_mean > 0)
+        #mask = (j.R > 30) & (j.jad_tm < tpj[0]) & (j.bc_id == 1) & (np.logical_not(np.isnan(j.jad_mean))) & (j.jad_mean > 0)
+        mask = (j.R > 30) & (j.bc_id == 1) & (np.logical_not(np.isnan(j.jad_mean))) & (j.jad_mean > 0)
+        jad_ts = pd.Series(smooth(j.jad_mean[mask],10),index = j.jad_tm[mask])
+
+        #j_c_tm.append(j.jad_tm[mask])
+        j_c_flx = j_c_flx.append(jad_ts)
+        print(j_c_flx)
+
+        dt = ((j.jad_tm[1:]-j.jad_tm[:-1]).median()).seconds
+
+        winsz = int(3600.*10./dt)
+        print('dt...',dt,winsz)
+        jad_min= np.array(jad_ts.rolling(window=winsz,center=True).min())
+        jad_max= np.array(jad_ts.rolling(window=winsz,center=True).max())
+        diff.append(np.log(jad_max)-np.log(jad_min))
+        j_c_flx_max = j_c_flx_max.append(pd.Series(jad_max, index = j.jad_tm[mask]))
+        
+        """
+        fig, ax = plt.subplots(2,1,sharex=True)
+        ax[0].plot(df.index, rhov2)
+        ax[0].set_yscale('log')
+        ax[0].set_label('orbit...'+str(orbit+1))
+        ax[0].set_ylabel('rho v_r^2')
+        ax[1].plot(j.jad_tm[mask],jad_ts)
+        ax[1].plot(j.jad_tm[mask],jad_min,'.')
+        ax[1].plot(j.jad_tm[mask],jad_max,'.')
+        ax[1].set_yscale('log')
+        #plt.plot(j.jad_tm[mask],np.log(jad_max)-np.log(jad_min),'o')
+        """
+        wh = np.logical_not(np.isnan(jad_max))
+        r = j.R[mask] 
+        bin_max, bin_edges, binnumber = scipy.stats.binned_statistic(r[wh],jad_max[wh],statistic='median',bins=20)
+        wh = np.logical_not(np.isnan(jad_min))
+        bin_min, bin_edges, binnumber = scipy.stats.binned_statistic(r[wh],jad_min[wh],statistic='median',bins=20)
+        """
+        plt.figure()
+        plt.hlines(bin_max,bin_edges[:-1],bin_edges[1:])
+        plt.hlines(bin_min,bin_edges[:-1],bin_edges[1:],'r')
+        plt.xlabel('radial distance (RJ)')
+        plt.ylabel('median max/min JADE counts')
+        plt.yscale('log')
+        """
+
+        #bin_min, bin_edges, binnumber = scipy.stats.binned_statistic(j.R[mask],j.jad_mean[mask],statistic='min',bins=20)
+        #bin_min, bin_edges, binnumber = scipy.stats.binned_statistic(j.jad_tm[mask],j.jad_mean[mask],statistic='max',bins=100)
+        
+        #bin_min, bin_edges, binnumber = scipy.stats.binned_statistic(j.R[mask],jad_ts,statistic='min',bins=20)
+        #bin_max, bin_edges, binnumber = scipy.stats.binned_statistic(j.R[mask],jad_ts,statistic='max',bins=20)
+        #diff = np.log(bin_max)-np.log(bin_min)
+        #diff1.append(diff)
+
+        #plt.hlines(diff,bin_edges[:-1],bin_edges[1:])
+        #plt.hlines(bin_min,bin_edges[:-1],bin_edges[1:])
+        
+        """
+        mask = (j.R > 50.0) & (j.R < 80) & (j.jad_tm < tpj[0]) & (j.bc_id == 1) & (np.logical_not(np.isnan(j.jad_mean))) & (j.jad_mean > 0)
+        jad_ts = pd.Series(j.jad_mean[mask],index = j.jad_tm[mask])
+        
+        bin_min, bin_edges, binnumber = scipy.stats.binned_statistic(j.R[mask],jad_ts,statistic='min',bins=20)
+        bin_max, bin_edges, binnumber = scipy.stats.binned_statistic(j.R[mask],jad_ts,statistic='max',bins=20)
+        diff = np.log(bin_max)-np.log(bin_min)
+        diff2.append(diff)
+
+        plt.hlines(diff,bin_edges[:-1],bin_edges[1:])
+
+
+        mask = (j.R > 80.0) & (j.jad_tm < tpj[0]) & (j.bc_id == 1) & (np.logical_not(np.isnan(j.jad_mean))) & (j.jad_mean > 0)
+        jad_ts = pd.Series(j.jad_mean[mask],index = j.jad_tm[mask])
+        
+        bin_min, bin_edges, binnumber = scipy.stats.binned_statistic(j.R[mask],jad_ts,statistic='min',bins=20)
+        bin_max, bin_edges, binnumber = scipy.stats.binned_statistic(j.R[mask],jad_ts,statistic='max',bins=20)
+        diff = np.log(bin_max)-np.log(bin_min)
+        diff3.append(diff)
+
+        plt.hlines(diff,bin_edges[:-1],bin_edges[1:])
+        """
+        """
+        plt.xlabel('R (RJ)')
+        plt.ylabel('log max-min')
+        """
+
+    fig, ax = plt.subplots(2,1,sharex=True)
+    ax[0].plot(df.index, rhov2)
+    ax[0].set_yscale('log')
+    ax[0].set_label('orbit...'+str(orbit+1))
+    ax[0].set_ylabel('rho v_r^2')
+    ax2 = ax[0].twinx()
+    ax2.plot(j_c_flx_max,color='orange')
+    ax2.set_yscale('log')
+    #ax[1].plot(j_c_flx)
+    #ax[1].plot(j_c_flx_max)
+    #ax[1].set_yscale('log')
+
+    plt.figure()
+    plt.plot(df.index,rhov2)
+    plt.yscale('log')
+    plt.ylabel('rho v_r^2')
+    ax2 = plt.twinx()
+    ax2.plot(j_c_flx_max,color='orange')
+    ax2.set_yscale('log')
+    ax2.set_ylabel('max<JADE counts>')
+
+    plt.figure()
+    plt.plot(df.dphi)
+    plt.ylabel('dphi')
+    
+    
+    plt.show()
+    
+    plt.figure()
+    plt.hist(np.array(diff).flatten())
+        
+    fig, ax = plt.subplots(3,1)
+    ax[0].hist(np.array(diff1).flatten(),bins=15, alpha=0.5)
+    ax[0].set_title('20 < R < 50')
+    ax[0].set_xlim([1,9])
+    ax[1].hist(np.array(diff2).flatten(),bins=15,alpha=0.5)
+    ax[1].set_title('50 < R < 80')
+    ax[1].set_xlim([1,9])
+    ax[2].hist(np.array(diff3).flatten(),bins=15,alpha=0.5)
+    ax[2].set_title('80 < R')
+    ax[2].set_xlabel('log(max-min)')
+    ax[2].set_xlim([1,9])
+    plt.show()
+    
+def get_dn_dB_profiles(b,winsz,wh,whjad,j,n,orbit):
+
+    fig, ax = plt.subplots(2,1,sharex=True)
+    Br_bar = smooth(b.Br,winsz)
+    Bphi_bar = smooth(b.Bphi,winsz)
+    Btheta_bar = smooth(b.Btheta,winsz)
+    btot_bar = np.sqrt(Br_bar**2 + Btheta_bar**2 + Bphi_bar**2)
+        
+    bpar = (Br_bar*b.Br + Btheta_bar*b.Btheta + Bphi_bar*b.Bphi)/btot_bar
+    bperp2 = b.btot**2 - bpar**2
+
+    ax[0].set_title('orbit = '+str(orbit))
+    
+#    ax[0].plot(b.t[wh],Br_bar[wh],label='$B_r$')
+#    ax[0].plot(b.t[wh],Btheta_bar[wh],label='$B_\\theta$')
+#    ax[0].plot(b.t[wh],Bphi_bar[wh],label='$B_\phi$')
+    ax[0].set_ylabel('B (nT)')
+    #ax[1].plot(b.t[wh],btot_bar[wh],'k',label='|B|')
+    #ax[1].plot(b.t[wh],-btot_bar[wh],'k',label='|B|')
+    bperp_ts = pd.Series(bperp2[wh],index = b.t[wh])
+    ax[0].plot(bperp_ts.rolling(window=winsz).mean(),label='mean')
+    ax[0].plot(b.t[wh],bperp2[wh],'k',label='$B_\perp^2$')
+    #ax[0].plot(b.t[wh],bpar[wh],label='$B_\parallel$')
+    ax[0].legend(loc="best")
+    #ax[0].set_yscale('log')
+    ax[0].set_ylim([0,70])
+
+    j.jad_mean[np.isnan(j.jad_mean)] = 0.0
+    
+    #mask = np.logical_and(whjad, np.logical_not(np.isnan(j.jad_mean)))
+    tpj = j.jad_tm[j.R == j.R.min()]
+    
+    wh1 = np.logical_and(np.logical_and(j.R > 20.0, j.jad_tm < tpj[0]), j.bc_id == 1)
+    wh2 = np.logical_and(np.logical_and(j.R > 1.5, j.jad_tm > tpj[0]), j.bc_id == 1)
+    mask = np.logical_and(whjad, np.logical_and(np.logical_not(np.isnan(j.jad_mean)), j.jad_mean>0))
+
+    mask = np.logical_and(mask,wh1)
+    
+    j.z_cent[np.isnan(j.z_cent)] = 0.0
+    jad_ts = pd.Series(j.jad_mean[mask],index = j.jad_tm[mask])
+
+    ax[1].plot(jad_ts.rolling(window=10,center=True).mean())
+    ax[1].plot(jad_ts.rolling(window=1200,center=True).mean())
+
+    ax[1].set_yscale('log')
+    ax[1].set_ylabel('Jade mean flux')
+
+    def get_25perc(arr):
+        return np.percentile(arr, 25)
+    def get_75perc(arr):
+        return np.percentile(arr, 75)
+    
+    bin_means, bin_edges, binnumber = scipy.stats.binned_statistic(j.z_cent[mask],jad_ts,statistic='median',bins=50)
+    plt.figure()
+    plt.hlines(bin_means,bin_edges[:-1],bin_edges[1:],'b')
+    #plt.vlines(bin_means,bin_edges[:-1],bin_edges[1:])
+    #plt.plot(bin_edges[:-1],bin_means)
+    plt.xlabel('z_cent (RJ)')
+    plt.ylabel('median <JADE counts>')
+    plt.yscale('log')
+    perc_25, bin_edges, binnumber = scipy.stats.binned_statistic(j.z_cent[mask],jad_ts, get_25perc ,bins=50)
+    #plt.hlines(perc_25,bin_edges[:-1],bin_edges[1:],'r')
+    plt.plot(0.5*(bin_edges[1:]+bin_edges[:-1]),perc_25,'r:')
+    perc_75, bin_edges, binnumber = scipy.stats.binned_statistic(j.z_cent[mask],jad_ts, get_75perc ,bins=50)
+    #plt.hlines(perc_75,bin_edges[:-1],bin_edges[1:],'r')
+    plt.plot(0.5*(bin_edges[1:]+bin_edges[:-1]),perc_75,'r:')
+
+    
+    bin_min, bin_edges, binnumber = scipy.stats.binned_statistic(j.R[mask],jad_ts,statistic='min',bins=20)
+    bin_max, bin_edges, binnumber = scipy.stats.binned_statistic(j.R[mask],jad_ts,statistic='max',bins=20)
+    plt.figure()
+    print(bin_means)
+    plt.hlines(np.log(bin_max)-np.log(bin_min),bin_edges[:-1],bin_edges[1:])
+    #plt.vlines(bin_means,bin_edges[:-1],bin_edges[1:])
+    #plt.plot(bin_edges[:-1],bin_means)
+    plt.xlabel('R (RJ)')
+    plt.ylabel('log max-min')
+    #plt.yscale('log')
+    perc_25, bin_edges, binnumber = scipy.stats.binned_statistic(j.R[mask],jad_ts, get_25perc ,bins=50)
+    #plt.hlines(perc_25,bin_edges[:-1],bin_edges[1:],'r')
+    #plt.plot(0.5*(bin_edges[1:]+bin_edges[:-1]),perc_25,'r:')
+    perc_75, bin_edges, binnumber = scipy.stats.binned_statistic(j.R[mask],jad_ts, get_75perc ,bins=50)
+    #plt.hlines(perc_75,bin_edges[:-1],bin_edges[1:],'r')
+    #plt.plot(0.5*(bin_edges[1:]+bin_edges[:-1]),perc_75,'r:')
+
+    plt.figure()
+    plt.hist(np.log(bin_max)-np.log(bin_min))
+
+    bin_means, bin_edges, binnumber = scipy.stats.binned_statistic(b.z_cent[wh],bperp2[wh],statistic='median',bins=50)
+    plt.figure()
+    plt.hlines(bin_means,bin_edges[:-1],bin_edges[1:])
+    #plt.vlines(bin_means,bin_edges[:-1],bin_edges[1:])
+    #plt.plot(bin_edges[:-1],bin_means)
+    plt.xlabel('z_cent')
+    plt.ylabel('median <bperp2>')
+    plt.yscale('log')
+    perc_25, bin_edges, binnumber = scipy.stats.binned_statistic(b.z_cent[wh],bperp2[wh], get_25perc ,bins=50)
+    #plt.hlines(perc_25,bin_edges[:-1],bin_edges[1:],'r')
+    plt.plot(0.5*(bin_edges[1:]+bin_edges[:-1]),perc_25,'r:')
+    perc_75, bin_edges, binnumber = scipy.stats.binned_statistic(b.z_cent[wh],bperp2[wh], get_75perc ,bins=50)
+    #plt.hlines(perc_75,bin_edges[:-1],bin_edges[1:],'r')
+    plt.plot(0.5*(bin_edges[1:]+bin_edges[:-1]),perc_75,'r:')
+    
+
+    
+    #ax[2].plot(n.t,n.h,label='heavies')
+    #ax[2].plot(n.t,n.p,label='protons')
+    #ax[2].legend(loc="best")
+    #ax[2].set_ylabel('Density')
+    #ax[2].set_yscale('log')
+    ax[1].get_shared_x_axes().join(ax[0], ax[1])
+    ax2 = ax[1].twinx()
+    ax2.set_ylabel('z_cent')
+    ax2.plot(j.jad_tm,j.z_cent, color='grey')
+    ax2.plot(j.jad_tm,np.zeros(len(j.jad_tm)),':',color='grey')
+    ax[1].set_xlim([np.min(j.jad_tm),np.max(j.jad_tm)])
+
+    
+    #plt.show()
+    """
+    tpj = j.jad_tm[j.R == j.R.min()]
+    print('jad min tm...',j.R,Rj)
+    
+    
+    wh1 = np.logical_and(np.logical_and(j.R > 1.5, j.jad_tm < tpj[0]), j.bc_id == 1)
+    wh2 = np.logical_and(np.logical_and(j.R > 1.5, j.jad_tm > tpj[0]), j.bc_id == 1)
+    print(wh1)
+          
+    
+    fig, ax = plt.subplots(2,1,sharex=True)    
+    ax[0].plot(b.r[b.wh_in],Br_bar[b.wh_in],label='$B_r$')
+    ax[0].plot(b.r[b.wh_in],Btheta_bar[b.wh_in],label='$B_\\theta$')
+    ax[0].plot(b.r[b.wh_in],Bphi_bar[b.wh_in],label='$B_\phi$')
+    ax[0].set_ylabel('B (nT)')
+    ax[0].plot(b.r[b.wh_in],bperp2[b.wh_in],'k',label='$B_\perp^2$')
+    ax[0].plot(b.r[b.wh_in],bpar[b.wh_in],label='$B_\parallel$')
+    ax[0].legend(loc="best")
+    ax[0].set_title('in bound')
+    ax[0].set_ylim([-70,70])
+    ax[1].plot(j.R[wh1],smooth(j.jad_mean[wh1],10))
+    ax[1].set_yscale('log')
+    ax[1].set_ylabel('Jade mean flux')
+
+    fig, ax = plt.subplots(2,1,sharex=True)    
+    ax[0].plot(b.r[b.wh_out],Br_bar[b.wh_out],label='$B_r$')
+    ax[0].plot(b.r[b.wh_out],Btheta_bar[b.wh_out],label='$B_\\theta$')
+    ax[0].plot(b.r[b.wh_out],Bphi_bar[b.wh_out],label='$B_\phi$')
+    ax[0].set_ylabel('B (nT)')
+    ax[0].plot(b.r[b.wh_out],bperp2[b.wh_out],'k',label='$B_\perp^2$')
+    ax[0].plot(b.r[b.wh_out],bpar[b.wh_out],label='$B_\parallel$')
+    ax[0].legend(loc="best")
+    ax[0].set_title('out bound')
+    ax[0].set_ylim([-70,70])
+    ax[1].plot(j.R[wh2],smooth(j.jad_mean[wh2],10))
+    ax[1].set_yscale('log')
+    ax[1].set_ylabel('Jade mean flux')
+    """
+    
     plt.show()
 
+
+    
+    
 def get_B_den_profiles_2(n,b,wh):
     #r = r/7.14e4
     fig, ax = plt.subplots(2,1,sharex=True)
@@ -594,7 +1040,6 @@ def get_bend_events(n,b,dt,orbit):
     #print(b.t[wh])
     
 
-
 def plot_Juno_mag(orbit):  #use orbits 1-26 for Huscher density
     orbit = orbit - 1
     plt.close('all')
@@ -648,7 +1093,7 @@ def plot_Juno_mag(orbit):  #use orbits 1-26 for Huscher density
     
     b = MagData(timeStart,timeEnd,'/data/juno_spacecraft/data/fgm_ss',['fgm_jno','r60s'])    
 
-    
+    """
     j = JadClass(timeStart, timeEnd)
     #j.read_data()
     #j.sys_3_data()
@@ -658,12 +1103,12 @@ def plot_Juno_mag(orbit):  #use orbits 1-26 for Huscher density
     jad_file = open(filename, 'wb')
     pickle.dump(j, jad_file)
     jad_file.close()
-    """
-    filename = './jad_mean_orbit_6'
+    """    
+
+    filename = './jad_mean_orbit_'+str(orbit)+'.pkl'
     picklefile = open(filename,'rb')
     j = pickle.load(picklefile)
-    """
-    
+          
     n = DenClass(timeStart,timeEnd)
     n.read_density()
     
@@ -701,7 +1146,7 @@ def plot_Juno_mag(orbit):  #use orbits 1-26 for Huscher density
     wh1 = np.logical_and(np.logical_and(r/Rj > 1.5, t < tpj[0]), bc_id == 1)
     wh2 = np.logical_and(np.logical_and(r/Rj > 1.5, t > tpj[0]), bc_id == 1)
 
-    get_3d_plot(x,y,z)
+    #get_3d_plot(x,y,z)
 
     b = MagClass(Bx,By,Bz,Br,Btheta,Bphi,bc_id,wh1,wh2,R,lat,t)
     
@@ -712,15 +1157,22 @@ def plot_Juno_mag(orbit):  #use orbits 1-26 for Huscher density
 
     return n,b,j
 
-for i in range(5,32):
+#----------------------------------------------------------------------------------------
+
+#for i in range(6,32):
     
-    orbit = i
-    n,b,j = plot_Juno_mag(orbit)
-    wh =  np.logical_and(b.r > 10, b.bc_id == 1)
-    whjad = np.logical_and(j.R > 10, j.bc_id == 1)
-    #wh = b.r > 10
+orbit = 12
+n,b,j = plot_Juno_mag(orbit)
+wh = (b.r > 10) & (b.bc_id == 1)
+whjad = (j.R > 10) & (j.bc_id == 1)
+#wh = b.r > 10
     #get_B_profiles_2(b,wh)
-    #get_B_dB_profiles_2(b,10,wh,whjad,j,n)
+#get_B_dB_profiles_2(b,10,wh,whjad,j,n,orbit)
+#plt.show()
+
+get_dn_dB_profiles(b,10,wh,whjad,j,n,orbit)
+#get_jade_variation()
+
 
 #get_B_den_profiles_2(n,b,wh)
 
