@@ -9,6 +9,7 @@ import csv
 import pathlib
 from juno_functions import _get_files
 import scipy
+from spacepy import pycdf
 
 myatan2 = np.vectorize(m.atan2)
 Rj = 7.14e4
@@ -161,10 +162,10 @@ class JadClass:
         self.bc_df = 0.0
         self.bc_id = 0.0
 
-        self.read_data()
-        self.sys_3_data()
-        self.get_mp_bc()
-        self.get_bc_mask()
+        #self.read_data()
+        #self.sys_3_data()
+        #self.get_mp_bc()
+        #self.get_bc_mask()
         
     def read_data(self):      
         dataFolder = pathlib.Path('/data/juno_spacecraft/data/jad')
@@ -446,13 +447,19 @@ def get_jade_variation():
                     '2021-03-20 08:39:35',
                     '2021-05-12 15:29:09']   
 
-    df = pd.read_csv('./mSWiM/mSWiM_2017.csv')    
+    df2 = pd.read_csv('./mSWiM/mSWiM_2018.csv')    
+    df2.columns = ['odate','year','doy','month','day','hour','dphi','r','rho','vr','vt','vn','T','br','bt','bn']
+    tm_df = pd.DataFrame({'year': df2['year'], 'month': df2['month'], 'day': df2['day'], 'hour': df2['hour']})
+    tm = pd.to_datetime(tm_df)
+    df2['tm'] = tm
+    df2 = df2.set_index('tm')
+    df = pd.read_csv('./mSWiM/mSWiM_2016.csv')    
     df.columns = ['odate','year','doy','month','day','hour','dphi','r','rho','vr','vt','vn','T','br','bt','bn']
     tm_df = pd.DataFrame({'year': df['year'], 'month': df['month'], 'day': df['day'], 'hour': df['hour']})
     tm = pd.to_datetime(tm_df)
     df['tm'] = tm
     df = df.set_index('tm')
-    df1 = pd.read_csv('./mSWiM/mSWiM_2018.csv')    
+    df1 = pd.read_csv('./mSWiM/mSWiM_2017.csv')    
     df1.columns = ['odate','year','doy','month','day','hour','dphi','r','rho','vr','vt','vn','T','br','bt','bn']
     tm_df = pd.DataFrame({'year': df1['year'], 'month': df1['month'], 'day': df1['day'], 'hour': df1['hour']})
     tm = pd.to_datetime(tm_df)
@@ -460,6 +467,7 @@ def get_jade_variation():
     df1 = df1.set_index('tm')
 
     df = df.append(df1)
+    df = df.append(df2)
     
     rhov2 = df.rho*df.vr*df.vr
     
@@ -505,7 +513,7 @@ def get_jade_variation():
         diff.append(np.log(jad_max)-np.log(jad_min))
         j_c_flx_max = j_c_flx_max.append(pd.Series(jad_max, index = j.jad_tm[mask]))
         
-        """
+        
         fig, ax = plt.subplots(2,1,sharex=True)
         ax[0].plot(df.index, rhov2)
         ax[0].set_yscale('log')
@@ -516,7 +524,7 @@ def get_jade_variation():
         ax[1].plot(j.jad_tm[mask],jad_max,'.')
         ax[1].set_yscale('log')
         #plt.plot(j.jad_tm[mask],np.log(jad_max)-np.log(jad_min),'o')
-        """
+       
         wh = np.logical_not(np.isnan(jad_max))
         r = j.R[mask] 
         bin_max, bin_edges, binnumber = scipy.stats.binned_statistic(r[wh],jad_max[wh],statistic='median',bins=20)
@@ -1080,8 +1088,8 @@ def plot_Juno_mag(orbit):  #use orbits 1-26 for Huscher density
                     '2021-05-12 15:29:09']   
 
         
-#    timeStart = '2017-05-15T22:55:48'
-#    timeEnd = '2017-05-16T22:55:48'
+#    timeStart = '2016-07-01T00:00:00'
+#    timeEnd = '2016-08-01T00:00:00'
 
     timeStart = orbitsData[orbit]
 #    timeEnd = '2017-05-17T00:00:00'
@@ -1093,21 +1101,23 @@ def plot_Juno_mag(orbit):  #use orbits 1-26 for Huscher density
     
     b = MagData(timeStart,timeEnd,'/data/juno_spacecraft/data/fgm_ss',['fgm_jno','r60s'])    
 
-    """
+    
     j = JadClass(timeStart, timeEnd)
-    #j.read_data()
-    #j.sys_3_data()
-    #j.get_jad_dist()
+    """
+    j.read_data()
+    j.sys_3_data()
+    j.get_jad_dist()
     filename = './jad_mean_orbit_'+str(orbit)+'.pkl'
     import pickle
     jad_file = open(filename, 'wb')
     pickle.dump(j, jad_file)
     jad_file.close()
-    """    
-
+    """  
+    """
     filename = './jad_mean_orbit_'+str(orbit)+'.pkl'
     picklefile = open(filename,'rb')
     j = pickle.load(picklefile)
+    """    
           
     n = DenClass(timeStart,timeEnd)
     n.read_density()
@@ -1155,22 +1165,35 @@ def plot_Juno_mag(orbit):  #use orbits 1-26 for Huscher density
     #oc_freq = get_corr(t,R,lat,Br,Btheta,Bphi,wh1,wh2,bend,nh_den,np_den,nh_r,np_r)
     #bend, bend_bar = get_Bend_no_den(R,lat,Br,Btheta, Bphi,wh1,wh2)    
 
+    print(t)
+    """
+    cdf = pycdf.CDF('mag_data_orbit_0.cdf', '')
+    cdf['time'] = bx.index.tolist()
+    cdf['Bx'] = Bx
+    cdf['By'] = By
+    cdf['Bz'] = Bz
+    cdf['Br'] = Br
+    cdf['Btheta'] = Btheta
+    cdf['Bphi'] = Bphi
+    cdf['R'] = b.r
+    cdf['lat'] = b.lat
+    cdf.close()
+    """
     return n,b,j
 
 #----------------------------------------------------------------------------------------
 
-#for i in range(6,32):
+#for i in range(24,34):
     
-orbit = 12
+orbit = 4
 n,b,j = plot_Juno_mag(orbit)
-wh = (b.r > 10) & (b.bc_id == 1)
+wh = (b.r > 10) #& (b.bc_id == 1)
 whjad = (j.R > 10) & (j.bc_id == 1)
 #wh = b.r > 10
-    #get_B_profiles_2(b,wh)
+get_B_profiles_2(b,wh)
 #get_B_dB_profiles_2(b,10,wh,whjad,j,n,orbit)
 #plt.show()
-
-get_dn_dB_profiles(b,10,wh,whjad,j,n,orbit)
+#get_dn_dB_profiles(b,10,wh,whjad,j,n,orbit)
 #get_jade_variation()
 
 
