@@ -420,7 +420,7 @@ def get_B_profiles_2(b,wh):
     plt.show()
     return
 
-def get_B_dB_profiles_2(b,winsz,wh,whjad,j,n,orbit,std_thres,w):
+def get_B_dB_profiles_2(b,winsz,wh,whjad,j,jp,jh,orbit,std_thres,w):
 
     m = mSWiM()
     
@@ -465,7 +465,7 @@ def get_B_dB_profiles_2(b,winsz,wh,whjad,j,n,orbit,std_thres,w):
     arr = arr.transpose()
     vmin = 1e-14
     vmax = 1e-10
-    ax[2].pcolor(w.t,w.freq[1:40],arr[1:40,:],norm=LogNorm(vmin=5e-15, vmax=1e-10))
+    ax[2].pcolormesh(w.t,w.freq[1:40],arr[1:40,:],norm=LogNorm(vmin=5e-15, vmax=1e-10))
     ax[2].set_yscale('log')
     ax[2].set_ylabel('freq (Hz)')
     ax[2].set_xlabel('Time')
@@ -484,7 +484,7 @@ def get_B_dB_profiles_2(b,winsz,wh,whjad,j,n,orbit,std_thres,w):
     ax3.set_ylabel('dphi')
     ax3.plot(m.t,m.dphi,color='grey',linewidth=0.5)
     
-    fig.savefig('orbit'+str(orbit)+'_mSWiM.png',dpi=300)
+    #fig.savefig('orbit'+str(orbit)+'_mSWiM.png',dpi=300)
     
     #plt.show()
 
@@ -1102,7 +1102,8 @@ def plot_Juno_mag(orbit):  #use orbits 1-26 for Huscher density
     
     Rj = 7.14e4
     
-    b = MagData(timeStart,timeEnd,'/data/juno_spacecraft/data/fgm_ss',['fgm_jno','r60s'])    
+    b = MagData(timeStart,timeEnd,'/data/juno_spacecraft/data/fgm_ss',['fgm_jno','r60s'])
+#    b = MagData(timeStart,timeEnd,'/data/juno_spacecraft/data/pickled_mag_pos',['jno_mag_pos','v01'])    
     
     j = JadClass(timeStart, timeEnd)
     
@@ -1120,8 +1121,8 @@ def plot_Juno_mag(orbit):  #use orbits 1-26 for Huscher density
     j = pickle.load(picklefile)
     """
     
-    n = DenClass(timeStart,timeEnd)
-    n.read_density()
+    #n = DenClass(timeStart,timeEnd)
+    #n.read_density()
     
     #j = JadClass(t,jad_arr,jad_mean)
     
@@ -1227,7 +1228,7 @@ r_in_arr = []
 r_out_arr = []
 mask_in_arr = []
 mask_out_arr = []
-for i in range(18,19):
+for i in range(5,6):
     orbit = i
     print('orbit...',i)
     timeStart = orbitsData[orbit-1]
@@ -1255,9 +1256,14 @@ for i in range(18,19):
     picklefile = open(filename,'rb')
     w = pickle.load(picklefile)
 
-    n = DenClass(timeStart,timeEnd)
-    n.read_density()
+    #n = DenClass(timeStart,timeEnd)
+    #n.read_density()
 
+    jp = JAD_MOM_Data(timeStart, timeEnd, data_folder='/data/juno_spacecraft/data/jad_moments/AGU2020_moments',
+                     instrument=['PROTONS', 'V03'])
+    jh = JAD_MOM_Data(timeStart, timeEnd, data_folder='/data/juno_spacecraft/data/jad_moments/AGU2020_moments',
+                     instrument=['HEAVIES', 'V03'])
+    
     #for i in range(24,34):
 
     #bc_df = get_mp_bc()
@@ -1270,7 +1276,7 @@ for i in range(18,19):
     #wh = b.R > 10
     #get_B_profiles_2(b,wh)
     std_thres = 0.75
-    r_in, r_out, t_in, t_out, mask_in, mask_out = get_B_dB_profiles_2(b,10,wh,whjad,j,n,orbit,std_thres,w)
+    r_in, r_out, t_in, t_out, mask_in, mask_out = get_B_dB_profiles_2(b,10,wh,whjad,j,jp,jh,orbit,std_thres,w)
     orbit_in_arr.append(np.ones(len(r_in[mask_in]))*i)
     r_in_arr.append(r_in[mask_in])
     orbit_out_arr.append(np.ones(len(r_out[mask_out]))*i)

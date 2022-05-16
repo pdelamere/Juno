@@ -20,9 +20,12 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from spiceypy.spiceypy import xf2eul
 from sklearn.linear_model import LinearRegression
+import math as m
 
 from juno_functions import _get_files, time_in_lat_window, get_sheath_intervals
 
+myatan2 = np.vectorize(m.atan2)
+Rj = 7.14e4
 
 class PlotClass:
     def __init__(self, axes, xlabel=None, ylabel=None, title=None):
@@ -117,6 +120,501 @@ class PosData():
         CentEq2 = (a*np.tanh(b*R - c) + d)*np.sin(lon*deg2rad - e)
         z_equator = positions.T[2]/7.14e4 - R*np.sin(CentEq2)
 
+
+class bc_ids:
+    
+    def get_mp_bc(self):
+        bc_df = pd.read_csv('./wholecross5.csv')
+        bc_df.columns = ['DATETIME','ID']
+        bc_df = bc_df.set_index('DATETIME')
+        return bc_df
+    
+    def get_bc_mask(self):
+        self.bc_id = np.ones(len(self.t))
+        id = self.bc_df['ID'][:]
+        bc_t = self.bc_df.index
+        #t = self.jad_tm
+        self.bc_id[self.t < bc_t[0]] = 0 #no ID
+        for i in range(len(bc_t)-1):
+            mask = np.logical_and(bc_t[i] <= self.t,self.t < bc_t[i+1])
+            if id[i] == 1:
+                self.bc_id[mask] = 0
+        return 
+    
+    def sys_3_data(self):
+        for year in ['2016', '2017', '2018', '2019', '2020']:
+            spice.furnsh(f'/data/juno_spacecraft/data/meta_kernels/juno_{year}.tm')
+        
+        index_array = self.t #self.jad_tm
+        et_array = [spice.utc2et(i) for i in index_array.strftime('%Y-%m-%dT%H:%M:%S')]
+        positions, lt = spice.spkpos('JUNO', et_array,
+                                     'IAU_JUPITER', 'NONE', 'JUPITER')
+        rad = np.array([])
+        lat = np.array([])
+        lon = np.array([])
+        for vector in positions:
+            r, la, lo = spice.recsph(vector)
+            rad = np.append(rad, r)
+            lat = np.append(lat, la*180/np.pi)
+            lon = np.append(lon, lo*180/np.pi)
+        
+        x = np.array(positions.T[0])
+        y = np.array(positions.T[1])
+        z = np.array(positions.T[2])
+        spice.kclear()
+        
+        deg2rad = np.pi/180
+        a = 1.66*deg2rad
+        b = 0.131
+        R = np.sqrt(x**2 + y**2 + z**2)/7.14e4
+        c = 1.62
+        d = 7.76*deg2rad
+        e = 249*deg2rad
+        CentEq2 = (a*np.tanh(b*R - c) + d)*np.sin(lon*deg2rad - e)
+        self.z_cent = positions.T[2]/7.14e4 - R*np.sin(CentEq2)
+        self.R = R
+
+        for year in ['2016', '2017', '2018', '2019', '2020']:
+            spice.furnsh(f'/data/juno_spacecraft/data/meta_kernels/juno_{year}.tm')
+        
+        index_array = self.t #self.jad_tm
+        et_array = [spice.utc2et(i) for i in index_array.strftime('%Y-%m-%dT%H:%M:%S')]
+        positions, lt = spice.spkpos('JUNO', et_array,
+                                     'JUNO_JSS', 'NONE', 'JUPITER')
+        x = np.array(positions.T[0])
+        y = np.array(positions.T[1])
+        z = np.array(positions.T[2])
+        
+        return x,y,z
+
+    def Jup_dipole(self,r):
+        B0 = 417e-6/1e-9   #nTesla
+        Bdp = B0/r**3 #r in units of planetary radius
+        return Bdp
+
+    def smooth(self,y, box_pts):
+        box = np.ones(box_pts)/box_pts
+        y_smooth = np.convolve(y, box, mode='same')
+        return y_smooth
+
+        
+class WavData():
+    """Collects and stores all mag data between two datetimes.
+
+    Attributes
+    ----------
+    start_time : string
+        Start datetime in ISO format. e.g. "2016-01-01T00:00:00"
+    end_time : string
+        End datetime in ISO format. e.g. "2016-01-01T00:00:00"
+    data_df : string
+        Pandas dataframe containing magnitometer data indexed by a DatetimeIndex.
+    data_files : list
+        List of filepaths to data files containing data between the two datetimes.
+        This is gotten using an internal function
+
+    """
+
+    def __init__(self, start_time, end_time, data_folder='/data/juno_spacecraft/data/wav',
+                 instrument=['WAV_', '_E_V02']):
+        """Find and store all data between two datetimes.
+
+        Parameters
+        ----------
+        start_time : string
+            Start datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        end_time : string
+           End datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        data_folder : str, optional
+            Path to folder containing csv data files. The default is '/data/juno_spacecraft/data'.
+        instrument : list of strings, optional
+            List of strings that will be in filenames to aid file search.
+                The default is ['fgm_jno', 'r1s'].
+
+        Returns
+        -------
+        None.
+        """
+        self.start_time = start_time
+        self.end_time = end_time
+        self.data_files = self._get_files('CSV', data_folder, *instrument)
+        self.data_df = pd.DataFrame()
+        self.freq = 0.0
+        self.t = 0.0
+        self._get_data()
+
+    def _get_files(self,file_type, data_folder, *args):
+        import os
+        """Find all files between two dates.
+
+        Parameters
+        ----------
+        start_time : string
+        start datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        end_time : string
+        end datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        file_type : string
+        The type of file the magnetometer data is stored in. e.g. ".csv"
+        data_folder : string
+        folder which all data is stored in.
+        *args : string
+        strings in filenames that wil narow down searching.
+        
+        Returns
+        -------
+        file_paths : list
+        List of paths to found files.
+        
+        """
+    
+        if file_type.startswith('.'):
+            pass
+        else:
+            file_type = '.' + file_type
+            datetime_array = pd.date_range(self.start_time, self.end_time, freq='D').date
+            #print(datetime_array)
+            file_paths = []
+            file_dates = []
+            date_re = re.compile(r'\d{7}')
+            instrument_re = re.compile('|'.join(args))
+            for parent, child, files in os.walk(data_folder):
+                for file_name in files:
+                    if file_name.endswith(file_type):
+                        
+                        file_path = os.path.join(parent, file_name)
+                        file_date = datetime.strptime(
+                            date_re.search(file_name).group(), '%Y%j')
+                        instrument_match = instrument_re.findall(file_name)
+                  
+                        if file_date.date() in datetime_array and sorted(args) == sorted(instrument_match):
+
+                            file_paths = np.append(file_paths, file_path)
+                            file_dates = np.append(file_dates, file_date)
+                            
+                            sorting_array = sorted(zip(file_dates, file_paths))
+                            file_dates, file_paths = zip(*sorting_array)
+            del(datetime_array, file_dates)
+                        
+            return file_paths
+        
+        
+    def _get_data(self):
+        for wav_csv in self.data_files:
+            print('opening files....',wav_csv)
+            csv_df = pd.read_csv(wav_csv,skiprows=2)
+            csv_df.drop(csv_df.columns[0],axis=1,inplace=True)
+            csv_df.drop(csv_df.columns[1:27],axis=1,inplace=True)
+            freq = csv_df.iloc[0,1:]
+            #print(freq)
+            csv_df.drop([0,1],axis=0,inplace=True)
+            csv_df.rename(columns={csv_df.columns[0]: "DATETIME"},inplace=True)
+            csv_df['DATETIME'] = pd.to_datetime(csv_df['DATETIME'],format='%Y-%jT%H:%M:%S.%f')
+            
+            #csv_df['DATETIME'] = csv_df['DATETIME'].astype('datetime64[ns]')
+
+            csv_df = csv_df.set_index('DATETIME')
+            
+            
+            csv_df.index = csv_df.index.astype('datetime64[ns]').floor('S')
+            #print(csv_df.index)
+            self.data_df = self.data_df.append(csv_df)
+            #print(self.data_df)
+            self.data_df = self.data_df.sort_index()
+            #print(self.data_df.index, csv_df.index)
+            self.data_df = self.data_df[self.start_time: self.end_time].sort_index()
+            #print(self.data_df.info())
+        self.data_df = self.data_df.iloc[::600,:]
+        self.freq = freq
+        self.t = self.data_df.index
+        del csv_df
+
+    def plot_wav_data(self,thres):
+        from matplotlib import ticker
+        arr = self.data_df.to_numpy()
+        arr = arr.transpose()
+        #plt.contourf(self.t,self.freq,arr.transpose(),levels=50,locator=ticker.LogLocator(),vmin=1e-14, vmax=1e-9)
+        vmin = 1e-14
+        vmax = 1e-10
+        lev = np.linspace(np.log(vmin),np.log(vmax),10)
+        #plt.pcolor(self.t,self.freq[1:35],arr[1:35,:],norm=LogNorm())
+        plt.pcolormesh(self.t,self.freq[1:40],arr[1:40,:],norm=LogNorm(vmin=5e-15, vmax=1e-10))
+        #plt.contourf(self.t,self.freq,arr.transpose(),levels=np.exp(lev),norm = LogNorm())
+        #plt.imshow(arr.transpose(), norm=LogNorm(),aspect='auto',origin='lower') 
+        plt.yscale('log')
+        plt.ylabel('freq (Hertz)')
+        plt.xlabel('time')
+        #plt.ylim([1e2,2e4])
+        plt.colorbar()
+        plt.show()
+
+class JAD_MOM_Data(bc_ids):
+    """Collects and stores all mag data between two datetimes.
+
+    Attributes
+    ----------
+    start_time : string
+        Start datetime in ISO format. e.g. "2016-01-01T00:00:00"
+    end_time : string
+        End datetime in ISO format. e.g. "2016-01-01T00:00:00"
+    data_df : string
+        Pandas dataframe containing magnitometer data indexed by a DatetimeIndex.
+    data_files : list
+        List of filepaths to data files containing data between the two datetimes.
+        This is gotten using an internal function
+
+    """
+
+    def __init__(self, start_time, end_time, data_folder='/data/juno_spacecraft/data/jad_moments/AGU2020_moments',
+                 instrument=['PROTONS', 'V03']):
+        """Find and store all data between two datetimes.
+
+        Parameters
+        ----------
+        start_time : string
+            Start datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        end_time : string
+           End datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        data_folder : str, optional
+            Path to folder containing csv data files. The default is '/data/juno_spacecraft/data'.
+        instrument : list of strings, optional
+            List of strings that will be in filenames to aid file search.
+                The default is ['fgm_jno', 'r1s'].
+
+        Returns
+        -------
+        None.
+        """
+        self.start_time = start_time
+        self.end_time = end_time
+        self.data_files = self._get_files('CSV', data_folder, *instrument)
+        self.data_df = pd.DataFrame()
+        self.t = 0.0
+        self.n = 0.0
+        self.n_sig = 0.0
+        self.vr = 0.0
+        self.vr_sig = 0.0
+        self.vtheta = 0.0
+        self.vtheta_sig = 0.0
+        self.vphi = 0.0
+        self.vphi_sig = 0.0
+        self.T = 0.0
+        self.T_sig = 0.0
+        self._get_data()
+        self.bc_id = 0.0
+        self.bc_df = self.get_mp_bc()
+        self.get_bc_mask()
+        x,y,z = self.sys_3_data()
+        #self.plot_jad_data()
+
+    def _get_files(self,file_type, data_folder, *args):
+        import os
+        """Find all files between two dates.
+
+        Parameters
+        ----------
+        start_time : string
+        start datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        end_time : string
+        end datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        file_type : string
+        The type of file the magnetometer data is stored in. e.g. ".csv"
+        data_folder : string
+        folder which all data is stored in.
+        *args : string
+        strings in filenames that wil narow down searching.
+        
+        Returns
+        -------
+        file_paths : list
+        List of paths to found files.
+        
+        """
+    
+        if file_type.startswith('.'):
+            pass
+        else:
+            file_type = '.' + file_type
+            datetime_array = pd.date_range(self.start_time, self.end_time, freq='D').date
+            #print(datetime_array)
+            file_paths = []
+            file_dates = []
+            date_re = re.compile(r'\d{7}')
+            instrument_re = re.compile('|'.join(args))
+            for parent, child, files in os.walk(data_folder):
+                for file_name in files:
+                    if file_name.endswith(file_type):
+                        
+                        file_path = os.path.join(parent, file_name)
+                        file_date = datetime.strptime(
+                            date_re.search(file_name).group(), '%Y%j')
+                        instrument_match = instrument_re.findall(file_name)
+                  
+                        if file_date.date() in datetime_array and sorted(args) == sorted(instrument_match):
+
+                            file_paths = np.append(file_paths, file_path)
+                            file_dates = np.append(file_dates, file_date)
+                            
+                            sorting_array = sorted(zip(file_dates, file_paths))
+                            file_dates, file_paths = zip(*sorting_array)
+            del(datetime_array, file_dates)
+                        
+            return file_paths
+        
+        
+    def _get_data(self):
+        for jad_csv in self.data_files:
+            print('opening files....',jad_csv)
+            csv_df = pd.read_csv(jad_csv)
+            csv_df.rename(columns={csv_df.columns[0]: "DATETIME"},inplace=True)
+            csv_df['DATETIME'] = pd.to_datetime(csv_df['DATETIME'],format='%Y-%jT%H:%M:%S.%f')
+            
+            csv_df = csv_df.set_index('DATETIME')
+            
+            csv_df.index = csv_df.index.astype('datetime64[ns]').floor('S')
+            self.data_df = self.data_df.append(csv_df)
+            self.data_df = self.data_df.sort_index()
+            self.data_df = self.data_df[self.start_time: self.end_time].sort_index()
+        self.data_df.rename(columns={"N_CC": "n", "N_SIGMA_CC": "n_sig", "V_JSSRTP_KMPS[0]": "vr",
+                                     "V_JSSRTP_SIGMA_KMPS[0]": "vr_sig", "V_JSSRTP_KMPS[1]": "vtheta", 
+                                     "V_JSSRTP_SIGMA_KMPS[1]": "vtheta_sig", "V_JSSRTP_KMPS[2]": "vphi", 
+                                     "V_JSSRTP_SIGMA_KMPS[2]": "vphi_sig", "TEMP_EV": "Temp",
+                                     "TEMP_SIGMA_EV": "Temp_sig"}, inplace=True)
+        self.t = self.data_df.index
+        """                    
+        self.n = self.data_df.N_CC
+        self.nave = self.data_df.N_CC.rolling(10).mean()
+        self.n_sigma = self.data_df.N_SIGMA_CC
+        self.vr = self.data_df['V_JSSRTP_KMPS[0]']
+        self.vr_sigma = self.data_df['V_JSSRTP_SIGMA_KMPS[0]']
+        self.vphi = self.data_df['V_JSSRTP_KMPS[1]']
+        self.vphi_sigma = self.data_df['V_JSSRTP_SIGMA_KMPS[1]']
+        self.vtheta = self.data_df['V_JSSRTP_KMPS[2]']
+        self.vtheta_sigma = self.data_df['V_JSSRTP_SIGMA_KMPS[2]']
+        self.T = self.data_df['TEMP_EV']
+        self.T_sigma = self.data_df['TEMP_SIGMA_EV']
+        """
+        del csv_df
+
+    def plot_jad_data(self,sig_max,win,species):
+        #from matplotlib import ticker
+        wh = (self.data_df.n_sig < sig_max) & (self.data_df.n > 0)
+        fig, ax = plt.subplots(5,1,sharex=True)
+        fig.set_size_inches((12,8))
+        ax[0].set_title(species)
+        ax[0].plot(self.data_df.n[wh])
+        ax[0].plot(self.data_df.n[wh].rolling(win).mean())
+        ax[0].set_yscale('log')
+        #ax[0].plot(self.data_df.n[wh].rolling(win).mean())
+        wh = (self.data_df.vr_sig < sig_max)
+        ax[1].plot(self.data_df.vr[wh],label='vr')
+        ax[1].plot(self.data_df.vr[wh].rolling(win).mean())
+        ax[1].set_ylim([-500,500])
+        ax[1].set_ylabel('vr')
+        wh = (self.data_df.vtheta_sig < sig_max)
+        ax[2].plot(self.data_df.vtheta[wh],label='vr')
+        ax[2].plot(self.data_df.vtheta[wh].rolling(win).mean())
+        ax[2].set_ylim([-500,500])
+        ax[2].set_ylabel('vtheta')
+        wh = (self.data_df.vphi_sig < sig_max)
+        ax[3].plot(self.data_df.vphi[wh],label='vr')
+        ax[3].plot(self.data_df.vphi[wh].rolling(win).mean())
+        ax[3].set_ylim([-500,500])
+        ax[3].set_ylabel('vphi')
+        #ax[1].plot(self.data_df.vtheta,label='vtheta')
+        #ax[1].plot(self.data_df.vphi,label='vphi')
+        #ax[1].legend(loc="best")
+        wh = (self.data_df.Temp > 0) & (self.data_df.Temp_sig < sig_max)
+        ax[4].plot(self.data_df.Temp[wh])
+        ax[4].plot(self.data_df.Temp[wh].rolling(win).mean())
+        ax[4].set_yscale('log')
+        ax[4].set_ylabel('Temp') 
+        #plt.show()
+        #plt.plot(self.data_df.n[wh].rolling(win).mean())
+
+class MagClass(bc_ids):
+    def __init__(self, timeStart, timeEnd):
+        self.timeStart = timeStart
+        self.timeEnd = timeEnd
+        self.Bx = 0
+        self.By = 0
+        self.Bz = 0
+        self.Br = 0
+        self.Btheta = 0
+        self.Bphi = 0
+        self.btot = 0#np.sqrt(Br**2 + Btheta**2 + Bphi**2)
+        self.bend = 0#np.zeros(len(Bx))
+        self.wh_in = 0#wh_in
+        self.wh_out = 0#wh_out
+        self.X = 0
+        self.Y = 0
+        self.Z = 0
+        self.R = 0#R
+        self.lat = 0#lat
+        self.t = 0#t
+        self.z_cent = 0.0
+        self.bc_id = 0.0
+
+        self.read_mag_data()
+        x,y,z = self.sys_3_data()
+        self.bc_df = self.get_mp_bc()
+        self.get_bc_mask()
+
+    def read_mag_data(self):
+        print('reading MAG data: ', self.timeStart, self.timeEnd)
+        b = MagData(self.timeStart,self.timeEnd,'/data/juno_spacecraft/data/fgm_ss',['fgm_jno','r60s'])
+        #b = MagData(self.timeStart,self.timeEnd,'/data/juno_spacecraft/data/pickled_mag_pos',['jno_mag_pos','v01'])    
+        
+        bx = b.data_df['BX'][self.timeStart:self.timeEnd]
+        by = b.data_df['BY'][self.timeStart:self.timeEnd]
+        bz = b.data_df['BZ'][self.timeStart:self.timeEnd]
+        x = b.data_df['X'][self.timeStart:self.timeEnd]
+        y = b.data_df['Y'][self.timeStart:self.timeEnd]
+        z = b.data_df['Z'][self.timeStart:self.timeEnd]
+        
+        r = np.sqrt(x**2 + y**2 + z**2)
+        self.lat = myatan2(z,r)*180/np.pi
+    
+        self.t = bx.index
+        self.Bx = bx.to_numpy()
+        self.By = by.to_numpy()
+        self.Bz = bz.to_numpy()
+        self.X = x.to_numpy()
+        self.Y = y.to_numpy()
+        self.Z = z.to_numpy()
+        
+        self.R = np.sqrt(self.X**2 + self.Y**2 + self.Z**2)
+        self.R = self.R/Rj
+        
+        self.cart2sph()
+        self.btot = np.sqrt(self.Br**2 + self.Btheta**2 + self.Bphi**2)
+    """    
+    def get_bc_mask(self):
+        self.bc_id = np.ones(len(self.Bx))
+        id = self.bc_df['ID'][:]
+        bc_t = self.bc_df.index
+        t = self.t #Bx.index
+        self.bc_id[t < bc_t[0]] = 0 #no ID
+        for i in range(len(bc_t)-1):
+            mask = np.logical_and(bc_t[i] <= t,t < bc_t[i+1])
+            if id[i] == 1:
+                self.bc_id[mask] = 0
+        return
+    """    
+    def cart2sph(self):
+        XsqPlusYsq = self.X**2 + self.Y**2
+        r = np.sqrt(XsqPlusYsq + self.Z**2)               # r
+        myatan2 = np.vectorize(m.atan2)
+        theta = myatan2(np.sqrt(XsqPlusYsq),self.Z)     # theta
+        phi = myatan2(self.Y,self.X)                           # phi
+        xhat = 1 #x/r
+        yhat = 1 #y/r
+        zhat = 1 #z/r
+        self.Br = self.Bx*np.sin(theta)*np.cos(phi)*xhat + self.By*np.sin(theta)*np.sin(phi)*yhat + self.Bz*np.cos(theta)*zhat
+        self.Btheta = self.Bx*np.cos(theta)*np.cos(phi)*xhat + self.By*np.cos(theta)*np.sin(phi)*yhat - self.Bz*np.sin(theta)*zhat
+        self.Bphi = -self.Bx*np.sin(phi)*xhat + self.By*np.cos(phi)*yhat
+        return 
+        
+        
 class MagData:
     """Collects and stores all mag data between two datetimes.
 
@@ -134,8 +632,8 @@ class MagData:
 
     """
 
-    def __init__(self, start_time, end_time, data_folder='/data/juno_spacecraft/data/fgm',
-                 instrument=['fgm_jno', 'r1s']):
+    def __init__(self, start_time, end_time, data_folder='/data/juno_spacecraft/data/fgm_ss',
+                 instrument=['fgm_jno','r60s']):
         """Find and store all data between two datetimes.
 
         Parameters
@@ -157,9 +655,29 @@ class MagData:
         self.start_time = start_time
         self.end_time = end_time
         self.data_files = _get_files(start_time, end_time, '.csv', data_folder, *instrument)
+        #self.data_files = _get_files(start_time, end_time, '.pkl', data_folder, *instrument)
         self.data_df = pd.DataFrame()
         self._get_data()
-
+    """
+    def _get_data(self):
+        for mag_file in self.data_files:
+            if mag_file.endswith('.csv'):
+                csv_df = pd.read_csv(mag_file)
+                csv_df = csv_df.drop(['DECIMAL DAY', 'INSTRUMENT RANGE'], axis=1)
+                csv_df.columns = ['DATETIME', 'BX', 'BY', 'BZ', 'X', 'Y', 'Z']
+                csv_df = csv_df.set_index('DATETIME')
+                csv_df.index = csv_df.index.astype('datetime64[ns]').floor('S')
+                self.data_df = self.data_df.append(csv_df)
+                self.data_df = self.data_df.sort_index()
+                self.data_df = self.data_df[self.start_time: self.end_time].sort_index()
+                del csv_df
+            elif mag_file.endswith('.pkl'):
+                with open(mag_file, 'rb') as pikl:
+                    self.data_df = pd.concat([self.data_df, pickle.load(pikl)],
+                                             axis=0) 
+                pikl.close()
+    """
+    
     def _get_data(self):
         for mag_csv in self.data_files:
             csv_df = pd.read_csv(mag_csv)
@@ -172,7 +690,8 @@ class MagData:
             self.data_df = self.data_df.sort_index()
             self.data_df = self.data_df[self.start_time: self.end_time].sort_index()
         del csv_df
-
+    
+            
     def plot(self, axes, start, end, data_labels, plot_magnitude=False, plot_title=None,
              xlabel=None, ylabel=None, time_per_major='12H', time_per_minor='1H',
              tick_label_format='%m-%d %H', x_ticks_labeled=True, **kwargs):
@@ -726,6 +1245,93 @@ class PDS3Label():
                     
         return self.dataNameDict #The dictionary is returned
 
+class JadClass(bc_ids):
+    def __init__(self,timeStart, timeEnd):
+        self.t = 0.0
+        self.jad_arr = 0.0
+        self.jad_mean = 0.0
+        self.timeStart = timeStart
+        self.timeEnd = timeEnd
+        self.z_cent = 0.0
+        self.R = 0.0
+        self.bc_df = 0.0
+        self.bc_id = 0.0
+
+        self.read_data()
+        x,y,z = self.sys_3_data()
+        self.bc_df = self.get_mp_bc()
+        self.get_bc_mask()
+
+        
+    def read_data(self):      
+        dataFolder = pathlib.Path('/data/juno_spacecraft/data/jad')
+        datFiles = _get_files(self.timeStart,self.timeEnd,'.DAT',dataFolder,'JAD_L30_LRS_ION_ANY_CNT') 
+        jadeIon = JadeData(datFiles,self.timeStart,self.timeEnd)
+        print('getting ion data....')
+        jadeIon.getIonData()
+        print('ion data retrieved...')
+        #plt.figure()
+        #if date in jadeIon.dataDict.keys(): #Ion spectrogram portion
+        jadeIonData = jadeIon.dataDict
+        jadeIonData = jadeIon.ion_df  
+        
+        self.jad_mean = []
+        self.t = jadeIon.ion_df.index
+        self.jad_arr = jadeIon.ion_df.to_numpy()
+        #plt.imshow(np.transpose(jad_arr),origin='lower',aspect='auto',cmap='jet')
+        #plt.show()
+        sz = self.jad_arr.shape
+        for i in range(sz[0]):
+            self.jad_mean.append(self.jad_arr[i,:-2].mean())
+            #self.jad_max.append(self.jad_arr[i,:-2].max())
+            #plt.figure()
+            #plt.plot(jad_tm,jad_mean)
+            #plt.plot(jad_tm,jad_max)
+            #plt.show()
+        self.jad_mean = np.array(self.jad_mean)
+
+    def get_jad_dist(self):
+        data = self.jad_mean
+        wh = np.logical_and((self.z_cent < 1), (self.z_cent > -1))
+        print(wh)
+        #data = data[wh]
+        plt.figure()
+        plt.hist(data)
+        plt.show()
+
+    #def get_mp_bc():
+    #    bc_df = pd.read_csv('./wholecross5.csv')
+    #    #bc_df = bc_df.drop(['NOTES'], axis=1)
+    #    bc_df.columns = ['DATETIME','ID']
+    #    #datetime = bc_df['DATE'][:] + ' ' + bc_df['TIME'][:]
+    #    #bc_df['DATETIME'] = datetime
+    #    bc_df = bc_df.set_index('DATETIME')
+    #    return bc_df
+        
+    #def get_mp_bc(self):
+    #    self.bc_df = pd.read_csv('./jno_crossings_master_fixed_v6.txt')
+    #    self.bc_df = self.bc_df.drop(['NOTES'], axis=1)
+    #    self.bc_df.columns = ['CASE','ORBIT','DATE', 'TIME', 'ID']
+    #    datetime = self.bc_df['DATE'][:] + ' ' + self.bc_df['TIME'][:]
+    #    self.bc_df['DATETIME'] = datetime
+    #    self.bc_df = self.bc_df.set_index('DATETIME')
+    #    return 
+
+    #def get_bc_mask(self):
+    #    self.bc_id = np.ones(len(self.jad_tm))
+    #    id = self.bc_df['ID'][:]
+    #    bc_t = self.bc_df.index
+    #    t = self.jad_tm
+    #    self.bc_id[t < bc_t[0]] = 0 #no ID
+    #    for i in range(len(bc_t)-1):
+    #        mask = np.logical_and(bc_t[i] <= t,t < bc_t[i+1])
+    #        if id[i] == 1:
+    #            self.bc_id[mask] = 0
+    #    return 
+
+
+
+    
 class JadeData():
     """Class for reading and getting data from a list of .dat file from the get files function provides.\n
     Datafile must be a single .dat file.\n
