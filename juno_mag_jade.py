@@ -422,9 +422,15 @@ def get_B_profiles_2(b,wh):
 
 def get_B_dB_profiles_2(b,winsz,wh,whjad,j,jp,jh,orbit,std_thres,w):
 
+    import matplotlib
+    matplotlib.rc('font', size=16)
+    #matplotlib.rc('ytick', labelsize=20)
+    
+    
     m = mSWiM()
     
     fig, ax = plt.subplots(4,1,sharex=True)
+    #fig.rcParams.update({'font.size': 16})
     fig.set_size_inches((12,8))
     Br_bar = j.smooth(b.Br,winsz)
     Bphi_bar = j.smooth(b.Bphi,winsz)
@@ -439,8 +445,8 @@ def get_B_dB_profiles_2(b,winsz,wh,whjad,j,jp,jh,orbit,std_thres,w):
 #    ax[0].plot(b.t[wh],b.Br[wh],label='$B_r$')
 #    ax[0].plot(b.t[wh],b.Btheta[wh],label='$B_\\theta$')
 #    ax[0].plot(b.t[wh],b.Bphi[wh],label='$B_\phi$')
-#    ax[0].plot(b.t[wh],b.btot[wh],'k',label='|B|')
-#    ax[0].plot(b.t[wh],-b.btot[wh],'k',label='|B|')
+    ax[0].plot(b.t[wh],b.btot[wh],'k')
+    ax[0].plot(b.t[wh],-b.btot[wh],'k',label='|B|')
 #    ax[0].legend(loc="best")
 #    ax[0].set_ylim([-70,70])
     ax[0].plot(b.t[wh],Br_bar[wh],label='$B_r$')
@@ -449,13 +455,13 @@ def get_B_dB_profiles_2(b,winsz,wh,whjad,j,jp,jh,orbit,std_thres,w):
     ax[0].set_ylabel('B (nT)')
     #ax[1].plot(b.t[wh],btot_bar[wh],'k',label='|B|')
     #ax[1].plot(b.t[wh],-btot_bar[wh],'k',label='|B|')
-    ax[0].plot(b.t[wh],bperp2[wh],'k',label='$B_\perp^2$')
-    ax[0].plot(b.t[wh],bpar[wh],label='$B_\parallel$')
+    #ax[0].plot(b.t[wh],bperp2[wh],'k',label='$B_\perp^2$')
+    #ax[0].plot(b.t[wh],bpar[wh],label='$B_\parallel$')
     ax[0].legend(loc="best")
-    ax[0].set_ylim([-50,50])
+    ax[0].set_ylim([-25,25])
     ax[1].plot(j.t[whjad],j.smooth(j.jad_mean[whjad],10))
     ax[1].set_yscale('log')
-    ax[1].set_ylabel('Jade mean flux')
+    ax[1].set_ylabel('JADE mean flux')
     #ax[2].plot(n.t,n.h,label='heavies')
     #ax[2].plot(n.t,n.p,label='protons')
     #ax[2].legend(loc="best")
@@ -468,7 +474,7 @@ def get_B_dB_profiles_2(b,winsz,wh,whjad,j,jp,jh,orbit,std_thres,w):
     ax[2].pcolormesh(w.t,w.freq[1:40],arr[1:40,:],norm=LogNorm(vmin=5e-15, vmax=1e-10))
     ax[2].set_yscale('log')
     ax[2].set_ylabel('freq (Hz)')
-    ax[2].set_xlabel('Time')
+
     ax[2].get_shared_x_axes().join(ax[0], ax[1], ax[2], ax[3])
     ax2 = ax[1].twinx()
     ax2.set_ylabel('z_cent')
@@ -478,8 +484,9 @@ def get_B_dB_profiles_2(b,winsz,wh,whjad,j,jp,jh,orbit,std_thres,w):
     ax[3].plot(m.t,m.rhov2)
     ax[3].set_xlim([np.min(j.t),np.max(j.t)])
     ax[3].set_yscale('log')
+    ax[3].set_xlabel('Time')
     #ax[3].set_xlabel('Time')
-    ax[3].set_ylabel('mSWiM rhov2')
+    ax[3].set_ylabel('mSWiM $\\rho v^2$')
     ax3 = ax[3].twinx()
     ax3.set_ylabel('dphi')
     ax3.plot(m.t,m.dphi,color='grey',linewidth=0.5)
@@ -649,6 +656,10 @@ def get_B_dB_profiles_2(b,winsz,wh,whjad,j,jp,jh,orbit,std_thres,w):
     return j.R[wh1], j.R[wh2], j.t[wh1], j.t[wh2], mask_in.to_numpy(), mask_out.to_numpy()
 
 def get_jade_variation():
+    from matplotlib import rc
+    rc('font', **{'family':'sans-serif','sans-serif':['Helvetica']})
+    plt.rcParams['font.family'] = 'Helvetica'
+    
     plt.close('all')
     orbitsData = ['2016-07-31T19:46:02',
                     '2016-09-23T03:44:48',
@@ -819,23 +830,26 @@ def get_jade_variation():
     ax[0].plot(df.index, rhov2)
     ax[0].set_yscale('log')
     ax[0].set_label('orbit...'+str(orbit+1))
-    ax[0].set_ylabel('rho v_r^2')
-    ax2 = ax[0].twinx()
-    ax2.plot(j_c_flx_max,color='orange')
-    ax2.set_yscale('log')
-    #ax[1].plot(j_c_flx)
-    #ax[1].plot(j_c_flx_max)
-    #ax[1].set_yscale('log')
+    ax[0].set_ylabel('$\\rho v_r^2$')
+    #ax2 = ax[0].twinx()
+    #ax2.plot(j_c_flx_max,color='orange')
+    #ax2.set_yscale('log')
+    #ax2.set_ylabel('max<JADE counts>')
+    ax[1].plot(df.dphi)
+    ax[1].set_ylabel('dphi')
+    ax[1].set_xlabel('time')
 
     plt.figure()
     plt.plot(df.index,rhov2)
     plt.yscale('log')
     plt.ylabel('rho v_r^2')
+    plt.xlabel('time')
     ax2 = plt.twinx()
-    ax2.plot(j_c_flx_max,color='orange')
+    ax2.plot(j_c_flx_max,color='orange',label='JADE')
     ax2.set_yscale('log')
     ax2.set_ylabel('max<JADE counts>')
 
+    
     plt.figure()
     plt.plot(df.dphi)
     plt.ylabel('dphi')
@@ -1259,17 +1273,25 @@ for i in range(5,6):
     #n = DenClass(timeStart,timeEnd)
     #n.read_density()
 
-    jp = JAD_MOM_Data(timeStart, timeEnd, data_folder='/data/juno_spacecraft/data/jad_moments/AGU2020_moments',
-                     instrument=['PROTONS', 'V03'])
-    jh = JAD_MOM_Data(timeStart, timeEnd, data_folder='/data/juno_spacecraft/data/jad_moments/AGU2020_moments',
-                     instrument=['HEAVIES', 'V03'])
+    filename = './jad_protons_orbit_'+str(orbit)+'.pkl'
+    picklefile = open(filename,'rb')
+    jp = pickle.load(picklefile)
+
+    filename = './jad_heavies_orbit_'+str(orbit)+'.pkl'
+    picklefile = open(filename,'rb')
+    jh = pickle.load(picklefile)
+    
+    #jp = JAD_MOM_Data(timeStart, timeEnd, data_folder='/data/juno_spacecraft/data/jad_moments/AGU2020_moments',
+    #                 instrument=['PROTONS', 'V03'])
+    #jh = JAD_MOM_Data(timeStart, timeEnd, data_folder='/data/juno_spacecraft/data/jad_moments/AGU2020_moments',
+    #                 instrument=['HEAVIES', 'V03'])
     
     #for i in range(24,34):
 
     #bc_df = get_mp_bc()
     #print(bc_df['ID'])
 
-    #orbit = 5
+    #orbit = 4
     #n,b,j = plot_Juno_mag(orbit)
     wh = (b.R > 10) & (b.bc_id == 1)
     whjad = (j.R > 10) & (j.bc_id == 1)
@@ -1284,7 +1306,7 @@ for i in range(5,6):
    
     #plt.show()
     #get_dn_dB_profiles(b,10,wh,whjad,j,n,orbit)
-    #get_jade_variation()
+    get_jade_variation()
 
 
     #get_B_den_profiles_2(n,b,wh)

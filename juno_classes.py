@@ -4,6 +4,7 @@ import pickle
 import struct
 from datetime import datetime, timedelta
 from os import fsdecode
+import pathlib
 
 import matplotlib
 import matplotlib.dates as mdates
@@ -124,7 +125,8 @@ class PosData():
 class bc_ids:
     
     def get_mp_bc(self):
-        bc_df = pd.read_csv('./wholecross5.csv')
+        #bc_df = pd.read_csv('./wholecross5.csv')
+        bc_df = pd.read_csv('./crossevent7.csv')
         bc_df.columns = ['DATETIME','ID']
         bc_df = bc_df.set_index('DATETIME')
         return bc_df
@@ -531,6 +533,142 @@ class JAD_MOM_Data(bc_ids):
         #plt.show()
         #plt.plot(self.data_df.n[wh].rolling(win).mean())
 
+
+class JEDI_MOM_Data(bc_ids):
+    """Collects and stores all mag data between two datetimes.
+
+    Attributes
+    ----------
+    start_time : string
+        Start datetime in ISO format. e.g. "2016-01-01T00:00:00"
+    end_time : string
+        End datetime in ISO format. e.g. "2016-01-01T00:00:00"
+    data_df : string
+        Pandas dataframe containing magnitometer data indexed by a DatetimeIndex.
+    data_files : list
+        List of filepaths to data files containing data between the two datetimes.
+        This is gotten using an internal function
+
+    """
+
+    def __init__(self, start_time, end_time, data_folder='/data/juno_spacecraft/data/jedi_moments',
+                 instrument=['heavy', 'p']):
+        """Find and store all data between two datetimes.
+
+        Parameters
+        ----------
+        start_time : string
+            Start datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        end_time : string
+           End datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        data_folder : str, optional
+            Path to folder containing csv data files. The default is '/data/juno_spacecraft/data'.
+        instrument : list of strings, optional
+            List of strings that will be in filenames to aid file search.
+                The default is ['fgm_jno', 'r1s'].
+
+        Returns
+        -------
+        None.
+        """
+        self.start_time = start_time
+        self.end_time = end_time
+        self.data_files = self._get_files('d2s', data_folder, *instrument)
+        self.data_df = pd.DataFrame()
+        self.t = 0.0
+        self.n_elec = 0.0
+        self.n_hp = 0.0
+        self.n_heavy = 0.0
+        self.p_elec = 0.0
+        self.p_hp = 0.0
+        self.p_heavy = 0.0
+        self._get_data()
+        self.bc_id = 0.0
+        self.bc_df = self.get_mp_bc()
+        self.get_bc_mask()
+        x,y,z = self.sys_3_data()
+        #self.plot_jad_data()
+
+    def _get_files(self,file_type, data_folder, *args):
+        import os
+        """Find all files between two dates.
+
+        Parameters
+        ----------
+        start_time : string
+        start datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        end_time : string
+        end datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        file_type : string
+        The type of file the magnetometer data is stored in. e.g. ".csv"
+        data_folder : string
+        folder which all data is stored in.
+        *args : string
+        strings in filenames that wil narow down searching.
+        
+        Returns
+        -------
+        file_paths : list
+        List of paths to found files.
+        
+        """
+    
+        if file_type.startswith('.'):
+            pass
+        else:
+            file_type = '.' + file_type
+            datetime_array = pd.date_range(self.start_time, self.end_time, freq='D').date
+            #print(datetime_array)
+            file_paths = []
+            file_dates = []
+            date_re = re.compile(r'\w{10}')
+            instrument_re = re.compile('|'.join(args))
+            for parent, child, files in os.walk(data_folder):
+                for file_name in files:
+                    if file_name.endswith(file_type):
+                        
+                        file_path = os.path.join(parent, file_name)
+                        
+                        file_date = datetime.strptime(
+                            date_re.search(file_name).group(), "%Y_%m_%d")
+                        instrument_match = instrument_re.findall(file_name)
+                  
+                        if file_date.date() in datetime_array and sorted(args) == sorted(instrument_match):
+
+                            file_paths = np.append(file_paths, file_path)
+                            file_dates = np.append(file_dates, file_date)
+                            
+                            sorting_array = sorted(zip(file_dates, file_paths))
+                            file_dates, file_paths = zip(*sorting_array)
+            del(datetime_array, file_dates)
+                        
+            return file_paths
+        
+        
+    def _get_data(self):
+        for jedi_csv in self.data_files:
+            print('opening files....',jedi_csv)
+            #csv_df = pd.read_csv(jad_csv)
+            csv_df = pd.read_fwf(jedi_csv, skiprows=9)
+            csv_df.rename(columns={csv_df.columns[0]: "DATETIME"},inplace=True)
+            csv_df.rename(columns={csv_df.columns[1]: "DATA"},inplace=True)
+            csv_df['DATETIME'] = pd.to_datetime(csv_df['DATETIME'],format=':01:%Y-%m-%dT%H:%M:%S.%f')
+            
+            csv_df = csv_df.set_index('DATETIME')
+            csv_df.index = csv_df.index.astype('datetime64[ns]').floor('S')
+            self.data_df = self.data_df.append(csv_df)
+            self.data_df = self.data_df.sort_index()
+            self.data_df = self.data_df[self.start_time: self.end_time].sort_index()
+        #self.data_df.rename(columns={"N_CC": "n", "N_SIGMA_CC": "n_sig", "V_JSSRTP_KMPS[0]": "vr",
+        #                             "V_JSSRTP_SIGMA_KMPS[0]": "vr_sig", "V_JSSRTP_KMPS[1]": "vtheta", 
+        #                             "V_JSSRTP_SIGMA_KMPS[1]": "vtheta_sig", "V_JSSRTP_KMPS[2]": "vphi", 
+        #                             "V_JSSRTP_SIGMA_KMPS[2]": "vphi_sig", "TEMP_EV": "Temp",
+        #                             "TEMP_SIGMA_EV": "Temp_sig"}, inplace=True)
+        self.t = self.data_df.index
+
+        del csv_df
+
+        
 class MagClass(bc_ids):
     def __init__(self, timeStart, timeEnd):
         self.timeStart = timeStart

@@ -13,7 +13,7 @@ from spacepy import pycdf
 from os import fsdecode
 import os
 import pickle
-from scipy import signal 
+from scipy import signal
 
 def plot_jp_jh_data(b,jp,jh,j,sig_max,win,orbit,maxR):
 
@@ -90,7 +90,11 @@ def plot_jp_jh_data(b,jp,jh,j,sig_max,win,orbit,maxR):
     ax[5].plot(b.t[wh],-btot[wh],'k')
     ax[5].set_ylim([-50,50])
     ax[5].legend(loc='best')
-    
+
+
+def gaussian(x, *p):
+    A, mu, sigma = p
+    return A*np.exp(-(x-mu)**2/(sigma**2))
     
 def g_mean(x):
     a = np.log(x)
@@ -124,23 +128,61 @@ def write_snippet(b, bperp, timestart,timeend):
     plt.plot(df.Bperp)
     plt.show()
 
+def plot_eq_den(jh,orbit):
+    win = 40
+    sig_max = 1000
+    tpj = jp.t[jp.R == jp.R.min()]
+    den =  jh.data_df.n.rolling(win).mean().to_numpy()
+    wh = (jh.R > 30) & (jh.R < 50) & (np.logical_not(np.isnan(den))) & (jh.t < tpj[0]) & (abs(jh.z_cent) < 5) & (jh.data_df.n_sig/abs(jh.data_df.n) < sig_max)
+    
+    plt.figure()
+    plt.scatter(jh.z_cent[wh],den[wh], s = 5, c = jh.R[wh], cmap='jet')
+    plt.xlabel('$z_{cent}$ ($R_J$)')
+    plt.ylabel('Density (cc)')
+    plt.title('Orbit: '+str(orbit))
+    plt.yscale('log')
+    bin_num = 50
+    mean, bin_edges, num = scipy.stats.binned_statistic(jh.z_cent[wh],den[wh] , 'mean', bin_num)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:])/2
+    plt.plot(bin_centers,mean,color='black',linewidth=5.0)
+
+    p0 = [1,0,1]
+    whm = np.logical_not(np.isnan(mean))
+    coeff, var_matrix = scipy.optimize.curve_fit(gaussian, bin_centers[whm], mean[whm], p0 = p0)
+    normal_dist = gaussian(bin_centers, *coeff)
+
+    print('plasma sheet crossings...')
+    print(f'A:{coeff[0]}, mu:{coeff[1]}, sigma:{coeff[2]}\n')
+    plt.plot(bin_centers, normal_dist,linewidth=5.0)
+
+    plt.figure()
+    
+    #plt.plot(jh.R[wh],den[wh]*np.exp((jh.z_cent[wh]-coeff[1])**2/(2*coeff[2]**2)),'.',markersize=1.0)
+    plt.plot(jh.R[wh],den[wh],'.',markersize=1.0)
+    plt.yscale('log')
+    plt.xlabel('Radial distance ($R_J$)')
+    plt.ylabel('Density (cc)')
+    
 def find_max_den(jp,jh):
     from scipy.signal import find_peaks
     tpj = jp.t[jp.R == jp.R.min()] 
 
-    wh = (jp.R < 50) & (jp.R > 20)
+    #wh = (jp.R < 50) & (jp.R > 20)
+    #wh1 = (j.R < 50) & (j.R > 20) & (j.t < tpj[0])
     win=40
-    sig_max = 100
-    maxR = 60
-    minR = 30
+    sig_max = 1000
+    maxR = 50
+    minR = 20
     
     fig, ax = plt.subplots(2,1,sharex=False)
     fig.set_size_inches((12,8))
-    wh = (jp.data_df.n_sig/jp.data_df.n < sig_max) & (jp.data_df.n > 0) & (jp.bc_id == 1) & (jp.R < maxR) & (jp.R > minR) & (jp.t < tpj[0])
+    wh = (jp.data_df.n_sig/jp.data_df.n < sig_max) & (jp.data_df.n > 0) & (jp.bc_id == 1) & (jp.R < maxR) & (jp.R > minR) & (jp.t < tpj[0]) & (abs(jp.z_cent < 5))
     ax[0].set_title('Orbit '+str(orbit))
     ax[0].plot(jp.R[wh],jp.data_df.n[wh].rolling(win).mean(),'.',markersize=1.0,label='protons')
+    #ax[0].plot(j.R[wh1],j.smooth(j.jad_mean[wh1],win),'.',markersize=1.0,label='jad_mean')
     ax[0].set_yscale('log')
     ax[0].set_ylabel('Density (cc)')
+    ax[0].set_xlabel('Radial distance ($R_J$)')
     wh = (jh.data_df.n_sig/abs(jh.data_df.n) < sig_max) & (jh.data_df.n > 0) & (jh.bc_id == 1) & (jh.R < maxR) & (jh.R > minR) & (jh.t < tpj[0])
     ax[0].plot(jh.R[wh],jh.data_df.n[wh].rolling(win).mean(),'.',markersize=1.0,label='heavies')
     ax0 = ax[0].twinx()
@@ -153,9 +195,10 @@ def find_max_den(jp,jh):
     
     #jh.data_df['max'] = jh.data_df.iloc[find_peaks(jh.data_df.n.rolling(win).mean().values,width=15, prominence = 1e-2)[0]]['n']
     denavg = jh.data_df.n.rolling(win).mean()
-    peaks = find_peaks(denavg,width=20, height = 2e-3, prominence = 2e-3, distance=50)[0]
+    #peaks = find_peaks(denavg,width=40, height = [5e-3, 10], prominence = 5e-3)[0]
+    peaks = find_peaks(denavg,width=40, height = [5e-3,10])[0]
     jh.data_df['max'] = denavg[peaks]
-    wh = (jh.t < tpj[0]) & (jh.R < maxR) & (jh.R > minR)
+    wh = (jh.t < tpj[0]) & (jh.R < maxR) & (jh.R > minR) & (abs(jh.z_cent) < 5)
     ax[0].scatter(jh.R[wh],jh.data_df['max'][wh],c='r')
     peaks = np.logical_not(np.isnan(jh.data_df['max'][wh]))   
     
@@ -170,8 +213,9 @@ def find_max_den(jp,jh):
     ax[1].set_xlabel('$\Delta$ t (hours)')
     ax[1].set_ylabel('$\Delta$ n (%)')
     
-
-    return dt,dn
+    whzcent = np.logical_not(np.isnan(jh.data_df['max']))
+    
+    return dt,dn,jh.data_df['max'][whzcent],jh.z_cent[whzcent]
     
 timeStart =  '2017-02-28T22:55:48'
 timeEnd = '2017-04-22T19:14:57'
@@ -224,10 +268,11 @@ R_T_arr = np.empty(1,dtype=float)
 
 dt_arr = np.empty(1,dtype=float)
 dn_arr = np.empty(1,dtype=float)
+zcent_arr = np.empty(1,dtype=float)
 
 #orbit = 6
 #for i in range(orbit,orbit+1):
-for i in range(5,27):
+for i in range(5,26):
     orbit = i
     timeStart = orbitsData[orbit-1]
     timeEnd = orbitsData[orbit]
@@ -249,6 +294,7 @@ for i in range(5,27):
     picklefile = open(filename,'rb')
     j = pickle.load(picklefile)
 
+        
     filename = './jad_protons_orbit_'+str(orbit)+'.pkl'
     picklefile = open(filename,'rb')
     jp = pickle.load(picklefile)
@@ -267,22 +313,38 @@ for i in range(5,27):
     #jh.plot_jad_data(1000,20,'heavies')
     #plot_jp_jh_data(b,jp,jh,j,10,4,orbit,150)
 
-    dt, dn = find_max_den(jp,jh)
+    dt, dn, peaks, zcent = find_max_den(jp,jh)
     dt_arr = np.append(dt_arr, dt)
     dn_arr = np.append(dn_arr, dn)
-    
+    zcent_arr = np.append(zcent_arr,zcent)    
+
+    #plot_eq_den(jh,orbit)
+
 
 plt.figure()
-wh = (dt_arr > 1) & (dt_arr < 5)
+wh = (dt_arr > 2) & (dt_arr < 11) & (abs(dn_arr) < 100)
 plt.scatter(dt_arr[wh], dn_arr[wh])
 plt.xlabel('$\Delta$ t (hours)')
 plt.ylabel('$\Delta$ n (%)')
+
+hist, bin_edges = np.histogram(dn_arr[wh], bins = 20)
+bin_centers = (bin_edges[:-1] + bin_edges[1:])/2
+p0 = [1,0,1]
+coeff, var_matrix = scipy.optimize.curve_fit(gaussian, bin_centers, hist, p0 = p0)
+normal_dist = gaussian(bin_centers, *coeff)
+
+print(f'A:{coeff[0]}, mu:{coeff[1]}, sigma:{coeff[2]}\n')
+
 plt.figure()
-plt.hist(dn_arr[wh], bins = 200)
+plt.hist(dn_arr[wh], bins = 20)
+plt.plot(bin_centers, normal_dist)
 plt.xlabel('$\Delta log(n)$ (%)')
+plt.ylabel('Counts')
+
+plt.figure()
+plt.hist(zcent_arr,bins=20)
 
 #plt.xlim([-200,200])
-
 
     
 plt.show()
