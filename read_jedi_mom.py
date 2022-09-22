@@ -432,7 +432,7 @@ def get_Walen(jp,jh,b,winsz):
 
 def pres_bal(jh,jd_h,b):
     
-    A = 1.0
+    A = 0.0
     ansi = (1+0.5*A)
     tpj = jh.t[jh.R == jh.R.min()]
     muo = np.pi*4e-7
@@ -449,9 +449,11 @@ def pres_bal(jh,jd_h,b):
     
     pres_p = bt.n*1e6*bt.Temp*1.6e-19/1e-9/ansi #nPa 
     pres_b = bt.btot2*1e-18/(2*muo)/1e-9 #+ 0.15  #nPa
-    wh = (abs(jh.R) > 15) & (abs(jh.R) < 60) & (jh.data_df.n_sig/abs(jh.data_df.n) < 10) & (jh.data_df.index < tpj[0])
-    d = {'Pp': pres_p[wh], 'Pb': pres_b[wh], 'R': jh.R[wh], 't': jh.data_df.index[wh], 'Phot': bt_jd.DATA[wh]}
+    wh = (abs(jh.R) > 15) & (abs(jh.R) < 80) & (jh.data_df.n_sig/abs(jh.data_df.n) < 1000) & (jh.data_df.index < tpj[0])
+    #d = {'Pp': pres_p[wh], 'Pb': pres_b[wh], 'R': jh.R[wh], 't': jh.data_df.index[wh], 'Phot': bt_jd.DATA[wh]}
+    d = {'Pp': pres_p[wh], 'Pb': pres_b[wh], 'R': jh.R[wh], 't': jh.data_df.index[wh], 'Phot': bt_jd.P[wh]}
     df = pd.DataFrame(data = d)
+    #print('Phot...',df.Phot[wh])
     plt.figure()
     plt.plot(df.R,df.Pp.rolling(10).mean(),'.',markersize=2.0,label='JADE Plasma pressure')
     plt.plot(df.R,df.Pb.rolling(10).mean(),'.',markersize=2.0,label='Mag pressure')
@@ -663,10 +665,47 @@ for i in range(orbit,orbit+1):
     jh = pickle.load(picklefile)
     
 
-    jd_h = JEDI_MOM_Data(timeStart,timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments',
-                         instrument=['p_heavy'])
+    #jd_h = JEDI_MOM_Data(timeStart,timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments',
+    #                     instrument=['p_heavy'])
+
+
+    jd_OpS= JEDI_MOM_h5(orbitsData[orbit-2],timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments',
+                         instrument=['OpS'])
+    jd_Hp= JEDI_MOM_h5(orbitsData[orbit-2],timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments',
+                         instrument=['Hp'])
+    jd_He2p= JEDI_MOM_h5(orbitsData[orbit-2],timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments',
+                         instrument=['He2p'])
+
+
+    plt.figure()
+    tpj = jh.t[jh.R == jh.R.min()]
+    print('tpj...',tpj)
+    #print("p...",jd_OpS.data_df)
+    #den = jd_He2p.Density
+    print('time...',timeStart,tpj)
+    #tpj = '2017-05-19T19:14:57'
     
+    wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.data_df.index < tpj[0])
+    print('OpS time...',jd_OpS.data_df.index)
+    #print(den[wh])
+    plt.plot(jd_OpS.data_df.R[wh],jd_OpS.data_df.Density[wh].rolling(20).mean(),label='O+S')
+    plt.plot(jd_Hp.data_df.R[wh],jd_Hp.data_df.Density[wh].rolling(20).mean(),label='H+')
+    plt.plot(jd_He2p.data_df.R[wh],jd_He2p.data_df.Density[wh].rolling(20).mean(),label='He++')
+    wh = (jh.data_df.n_sig/abs(jh.data_df.n) < 100) & (jh.data_df.index < tpj[0])
+    plt.plot(jh.R[wh],jh.data_df.n[wh],label='JAD_heavy')
+    plt.legend(loc='best')
+    plt.yscale('log')
+    plt.show()
+    plt.figure()
+    wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.data_df.index < tpj[0])
+    plt.plot(jd_Hp.data_df.R[wh],jd_Hp.data_df.Density[wh].rolling(20).mean()/jd_He2p.data_df.Density[wh].rolling(20).mean())
+    #plt.yscale('log')
+    plt.xlabel('Radial Distance (RJ)')
+    plt.ylabel('H/He')
+    plt.show()
+    pres_p, pres_b, R_pres, t_pres = pres_bal(jh,jd_Hp,b)
     
+    """
     #jp = JAD_MOM_Data(timeStart, timeEnd, data_folder='/data/juno_spacecraft/data/jad_moments/AGU2020_moments',
     #                  instrument=['PROTONS', 'V03'])
     #jh = JAD_MOM_Data(timeStart, timeEnd, data_folder='/data/juno_spacecraft/data/jad_moments/AGU2020_moments',
@@ -685,7 +724,7 @@ for i in range(orbit,orbit+1):
     Efld_arr = np.append(Efld_arr,Efld)
     R_Efld_arr = np.append(R_Efld_arr, R_Efld)
 
-    pres_p, pres_b, R_pres, t_pres = pres_bal(jh,jd_h,b)
+    pres_p, pres_b, R_pres, t_pres = pres_bal(jh,jd_OpS,b)
 
     #bt, bperp = get_Walen(jp,jh,b,100)
     #bt, bperp = get_Poynting(jp,jh,b,40)
@@ -702,7 +741,7 @@ for i in range(orbit,orbit+1):
     z_arr = np.append(z_arr,z)
     R_arr = np.append(R_arr,R)
 
-    """
+   
     temp, R = get_temp_R(jh,orbit)
     temp_arr = np.append(temp_arr, temp)
     R_T_arr = np.append(R_T_arr, R)
@@ -725,9 +764,10 @@ for i in range(orbit,orbit+1):
     picklefile = open(filename,'rb')
     w = pickle.load(picklefile)
     """
+    """
 
-
-
+"""
+"""
 ind = R_Efld_arr.argsort()
 R_Efld_arr = R_Efld_arr[ind]
 Efld_arr = Efld_arr[ind]
@@ -740,6 +780,8 @@ vphiR_arr = vphiR_arr[ind]
 ind = z_arr.argsort()
 z_arr = z_arr[ind]
 vphiz_arr = vphiz_arr[ind]
+"""
+
 
 """
 ind = R_T_arr.argsort()

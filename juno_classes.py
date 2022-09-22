@@ -534,6 +534,125 @@ class JAD_MOM_Data(bc_ids):
         #plt.plot(self.data_df.n[wh].rolling(win).mean())
 
 
+class JEDI_MOM_h5(bc_ids):
+
+    def __init__(self, start_time, end_time, data_folder='/data/juno_spacecraft/data/jedi_moments',
+                 instrument=['O+S']):
+        
+        self.start_time = start_time
+        self.end_time = end_time
+        print(self.start_time,self.end_time)
+        self.data_files = self._get_files('h5', data_folder, *instrument)
+        print(self.data_files)
+        self.R = 0.0
+        self.z_cent = 0.0
+        
+        self.Density = np.empty(0)
+        self.P = np.empty(0)
+        self.PA = np.empty(0)
+        self.Year = np.empty(0)
+        self.Month = np.empty(0)
+        self.DOM = np.empty(0)
+        self.Hour = np.empty(0)
+        self.Min = np.empty(0)
+        self.Sec = np.empty(0)
+        self.R = np.empty(0)
+        self.t = 0.0
+        self.data_df = pd.DataFrame()
+        self._get_data()
+        #self.bc_id = 0.0
+        #self.bc_df = self.get_mp_bc()
+        #self.get_bc_mask()
+        #x,y,z = self.sys_3_data()
+        
+    def _get_files(self,file_type, data_folder, *args):
+        import os
+        """Find all files between two dates.
+        
+        Parameters
+        ----------
+        start_time : string
+        start datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        end_time : string
+        end datetime in ISO format. e.g. "2016-01-01T00:00:00"
+        file_type : string
+        The type of file the magnetometer data is stored in. e.g. ".csv"
+        data_folder : string
+        folder which all data is stored in.
+        *args : string
+        strings in filenames that wil narow down searching.
+        
+        Returns
+        -------
+        file_paths : list
+        List of paths to found files.
+        
+        """
+    
+        if file_type.startswith('.'):
+            pass
+        else:
+            file_type = '.' + file_type
+            datetime_array = pd.date_range(self.start_time, self.end_time, freq='D').date
+            file_paths = []
+            file_dates = []
+            date_re = re.compile(r'\d{4}\-\d{2}\-\d{2}')
+            instrument_re = re.compile('|'.join(args))
+                        
+            for parent, child, files in os.walk(data_folder):
+                for file_name in files:
+                    
+                    if file_name.endswith(file_type):
+                        file_path = os.path.join(parent, file_name)
+                        
+                        file_date = datetime.strptime(
+                            date_re.search(file_name).group(), "%Y-%m-%d")
+                        instrument_match = instrument_re.findall(file_name)
+                        if sorted(args) == sorted(instrument_match):
+                           
+                            file_paths = np.append(file_paths, file_path)
+                            file_dates = np.append(file_dates, file_date)
+                            
+                            sorting_array = sorted(zip(file_dates, file_paths))
+                            file_dates, file_paths = zip(*sorting_array)
+            del(datetime_array, file_dates)
+            #print("file_paths...",file_paths)          
+            return file_paths
+        
+    def _get_data(self):
+        import h5py
+
+        for jedi_ in self.data_files:
+            #tmp_df = pd.DataFrame(columns = ["Density", "P", "R"])
+
+            t_df = pd.DataFrame()
+            f = h5py.File(jedi_, 'r')
+            #print('columns...',f.keys())
+            self.Density = np.append(self.Density, f['Density'][0:])
+            self.P = np.append(self.P, f['P'][0:])
+            self.Year = np.append(self.Year, f['Year'][0:])
+            self.Month = np.append(self.Month, f['Month'][0:])
+            self.DOM = np.append(self.DOM, f['DOM'][0:])
+            self.Hour = np.append(self.Hour, f['Hour'][0:])
+            self.Min = np.append(self.Min, f['Min'][0:])
+            self.Sec = np.append(self.Sec, f['Sec'][0:])
+            self.R = np.append(self.R, f['JSO-R'][0:])
+        self.t = []            
+        for i in range(len(self.Year)):
+            self.t.append(datetime(year = int(self.Year[i]), month = int(self.Month[i]), day = int(self.DOM[i]), hour = int(self.Hour[i]),
+                                   minute = int(self.Min[i]), second = int(self.Sec[i])))
+
+
+        self.t = np.asarray(self.t, dtype='datetime64')
+        self.data_df.index = self.t
+        self.data_df.index = self.data_df.index.astype('datetime64[ns]').floor('S')
+
+        self.data_df['Density'] = self.Density
+        self.data_df['P'] = self.P
+        self.data_df['R'] = self.R
+        #print('data_df...',self.data_df)             
+    
+    
 class JEDI_MOM_Data(bc_ids):
     """Collects and stores all mag data between two datetimes.
 
@@ -622,6 +741,7 @@ class JEDI_MOM_Data(bc_ids):
             file_paths = []
             file_dates = []
             date_re = re.compile(r'\w{10}')
+
             instrument_re = re.compile('|'.join(args))
             for parent, child, files in os.walk(data_folder):
                 for file_name in files:
@@ -634,7 +754,7 @@ class JEDI_MOM_Data(bc_ids):
                         instrument_match = instrument_re.findall(file_name)
                   
                         if file_date.date() in datetime_array and sorted(args) == sorted(instrument_match):
-
+                            print("sorted args...",sorted(args),sorted(instrument_match))
                             file_paths = np.append(file_paths, file_path)
                             file_dates = np.append(file_dates, file_date)
                             
