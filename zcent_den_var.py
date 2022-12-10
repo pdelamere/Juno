@@ -12,7 +12,7 @@ import scipy
 from spacepy import pycdf
 from os import fsdecode
 import os
-import pickle
+import pickle 
 from scipy import signal
 
 def plot_jp_jh_data(b,jp,jh,j,sig_max,win,orbit,maxR):
@@ -128,17 +128,18 @@ def write_snippet(b, bperp, timestart,timeend):
     plt.plot(df.Bperp)
     plt.show()
 
-def plot_eq_den(jh,orbit):
+def plot_eq_den(jh,b,orbit):
     win = 40
     sig_max = 1000
-    tpj = jp.t[jp.R == jp.R.min()]
+    tpj = jh.t[jh.R == jh.R.min()]
     den =  jh.data_df.n.rolling(win).mean().to_numpy()
-    wh = (jh.R > 30) & (jh.R < 50) & (np.logical_not(np.isnan(den))) & (jh.t < tpj[0]) & (abs(jh.z_cent) < 5) & (jh.data_df.n_sig/abs(jh.data_df.n) < sig_max)
+    wh = (jh.R > 45) & (jh.R < 50) & (np.logical_not(np.isnan(den))) & (jh.t < tpj[0]) & (abs(jh.z_cent) < 5) & (jh.data_df.n_sig/abs(jh.data_df.n) < sig_max)
     
     plt.figure()
     plt.scatter(jh.z_cent[wh],den[wh], s = 5, c = jh.R[wh], cmap='jet')
+    plt.colorbar(label='Radial distance (R$_J$)')
     plt.xlabel('$z_{cent}$ ($R_J$)')
-    plt.ylabel('Density (cc)')
+    plt.ylabel('Density (cm$^{-3}$)')
     plt.title('Orbit: '+str(orbit))
     plt.yscale('log')
     bin_num = 50
@@ -162,6 +163,87 @@ def plot_eq_den(jh,orbit):
     plt.yscale('log')
     plt.xlabel('Radial distance ($R_J$)')
     plt.ylabel('Density (cc)')
+
+
+def fit_sin(tt, yy):
+    '''Fit sin to the input time sequence, and return fitting parameters "amp", "omega", "phase", "offset", "freq", "period" and "fitfunc"'''
+    tt = np.array(tt)
+    yy = np.array(yy)
+    ff = np.fft.fftfreq(len(tt), (tt[1]-tt[0]))   # assume uniform spacing
+    Fyy = abs(np.fft.fft(yy))
+    guess_freq = abs(ff[np.argmax(Fyy[1:])+1])   # excluding the zero frequency "peak", which is related to offset
+    guess_amp = np.std(yy) * 2.**0.5
+    guess_offset = np.mean(yy)
+    guess = np.array([guess_amp, 2.*np.pi*guess_freq, 0., guess_offset])
+
+    def sinfunc(t, A, w, p, c):  return A * np.sin(w*t + p) + c
+    popt, pcov = scipy.optimize.curve_fit(sinfunc, tt, yy, p0=guess)
+    A, w, p, c = popt
+    f = w/(2.*np.pi)
+    fitfunc = lambda t: A * np.sin(w*t + p) + c
+    return {"amp": A, "omega": w, "phase": p, "offset": c, "freq": f, "period": 1./f, "fitfunc": fitfunc, "maxcov": np.max(pcov), "rawres": (guess,popt,pcov)}
+    
+    
+def plot_eq_den_b(jh,b,orbit):
+    print(jh.data_df.columns)
+    win = 40
+    sig_max = 100
+    tpj = jh.t[jh.R == jh.R.min()]
+    den =  jh.data_df.n.rolling(win).mean().to_numpy()
+    wh = (jh.R > 20) & (jh.R < 90) & (np.logical_not(np.isnan(den))) & (jh.t < tpj[0]) & (abs(jh.z_cent) < 20) & (jh.data_df.n_sig/abs(jh.data_df.n) < sig_max) & (jh.data_df.vtheta_sig/abs(jh.data_df.vtheta) < sig_max) & (jh.bc_id == 1)
+
+    plt.rcParams.update({'font.size':22})
+    fig, ax1 = plt.subplots(figsize=(12,8))
+    
+    ax2 = ax1.twinx()
+    ax1.plot(jh.t[wh],den[wh],'.',color='b')
+    #plt.colorbar(label='Radial distance (R$_J$)')
+    #ax1.set_xlabel('$Radial distance$ ($R_J$)')
+    ax1.set_xlabel('Time')
+    ax1.set_ylabel('Density (cm$^{-3}$)')
+    ax1.set_title('Orbit: '+str(orbit))
+    ax1.set_yscale('log')
+    bin_num = 50
+    mean, bin_edges, num = scipy.stats.binned_statistic(jh.z_cent[wh],den[wh] , 'mean', bin_num)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:])/2
+    #plt.plot(bin_centers,mean,color='black',linewidth=5.0)
+
+    p0 = [1,0,1]
+    whm = np.logical_not(np.isnan(mean))
+    coeff, var_matrix = scipy.optimize.curve_fit(gaussian, bin_centers[whm], mean[whm], p0 = p0)
+    normal_dist = gaussian(bin_centers, *coeff)
+
+    print('plasma sheet crossings...')
+    print(f'A:{coeff[0]}, mu:{coeff[1]}, sigma:{coeff[2]}\n')
+    #plt.plot(bin_centers, normal_dist,linewidth=5.0)
+
+    #plt.figure()
+    
+    #plt.plot(jh.R[wh],den[wh]*np.exp((jh.z_cent[wh]-coeff[1])**2/(2*coeff[2]**2)),'.',markersize=1.0)
+    #plt.plot(jh.R[wh],den[wh],'.',markersize=1.0)
+    #plt.yscale('log')
+    #plt.xlabel('Radial distance ($R_J$)')
+    #plt.ylabel('Density (cc)')
+
+    b_df = pd.Series(b.Btheta,index = b.R)
+    ax2.plot(jh.t[wh],jh.data_df.vtheta[wh].rolling(win).mean(),'.',color='r')
+    wht = (jh.R > 20) & (jh.R < 90) & (jh.t < tpj[0])  
+    t = pd.to_datetime(jh.t[wht]).astype(int)/10**9
+    t = t-t.min()
+    ax2.plot(jh.t[wht],40*np.sin(+0.31*9.925*3600+t*2*np.pi/(9.925*3600)))
+    ax2.set_ylabel('$v_\\theta$ (km/s)')
+    #tt2 = jh.t[wh]
+    #res = fit_sin(jh.t[wh], jh.data_df.vtheta[wh].rolling(win).mean())
+    #ax2.plot(tt2,res["fitfunc"](tt2))
+    #ax2.plot([b.R[wh].min(),b.R[wh].max()],[0,0],':')
+    #wh = (b.R > 30) & (b.R < 60) & (abs(b.z_cent) < 10) 
+    #ax2.plot(b_df.index[wh],100*b_df[wh].rolling(10).std(),'.')
+    plt.show()
+
+    #plt.figure()
+    #bin_means, bin_edges, binnumber = stats.binned_statisics(jh.z_cent[wh],jh.vtheta[wh].rolling(10).s
+    
+    
     
 def find_max_den(jp,jh):
     from scipy.signal import find_peaks
@@ -270,9 +352,9 @@ dt_arr = np.empty(1,dtype=float)
 dn_arr = np.empty(1,dtype=float)
 zcent_arr = np.empty(1,dtype=float)
 
-#orbit = 6
-#for i in range(orbit,orbit+1):
-for i in range(5,26):
+orbit = 5
+for i in range(orbit,orbit+1):
+#for i in range(5,26):
     orbit = i
     timeStart = orbitsData[orbit-1]
     timeEnd = orbitsData[orbit]
@@ -318,7 +400,8 @@ for i in range(5,26):
     dn_arr = np.append(dn_arr, dn)
     zcent_arr = np.append(zcent_arr,zcent)    
 
-    #plot_eq_den(jh,orbit)
+    #plot_eq_den(jh,b,orbit)
+    plot_eq_den_b(jh,b,orbit)
 
 
 plt.figure()
@@ -335,11 +418,14 @@ normal_dist = gaussian(bin_centers, *coeff)
 
 print(f'A:{coeff[0]}, mu:{coeff[1]}, sigma:{coeff[2]}\n')
 
-plt.figure()
+fig_handle = plt.figure()
 plt.hist(dn_arr[wh], bins = 20)
 plt.plot(bin_centers, normal_dist)
 plt.xlabel('$\Delta log(n)$ (%)')
 plt.ylabel('Counts')
+with open('JADE_peaks_figure.pkl','wb') as f:
+    pickle.dump([fig_handle,bin_centers,normal_dist,dn_arr[wh]],f)
+    f.close()
 
 plt.figure()
 plt.hist(zcent_arr,bins=20)

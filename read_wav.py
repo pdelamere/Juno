@@ -52,13 +52,14 @@ orbitsData = ['2016-07-31T19:46:02',
               '2021-03-20 08:39:35',
               '2021-05-12 15:29:09']   
 
-for i in range(5,6):
+orbit = 27
+for i in range(orbit,orbit+1):
     orbit = i
     timeStart = orbitsData[orbit-1]
     timeEnd = orbitsData[orbit]
 
-    """
-    w = WavData(timeStart,timeEnd,'/data/juno_spacecraft/data/wav',['WAV_','_E_V02'])
+    
+    w = WavData(timeStart,timeEnd,'/data/juno_spacecraft/data/wav',['WAV_','_E_V01'])
     
 
     filename = './wav_orbit_'+str(orbit)+'.pkl'
@@ -67,10 +68,10 @@ for i in range(5,6):
     pickle.dump(w, wav_file)
     wav_file.close()
     
-    """
-    filename = './wav_orbit_'+str(orbit)+'.pkl'
-    picklefile = open(filename,'rb')
-    w = pickle.load(picklefile)
+    
+    #filename = './wav_orbit_'+str(orbit)+'.pkl'
+    #picklefile = open(filename,'rb')
+    #w = pickle.load(picklefile)
 
     arr = w.data_df.to_numpy()
     arr = arr.transpose()

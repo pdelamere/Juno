@@ -430,7 +430,7 @@ def get_Walen(jp,jh,b,winsz):
     plt.show()
     return bt, bperp1    
 
-def pres_bal(jh,jd_h,b):
+def pres_bal(jh,jd_h,jd_OpS,b):
     
     A = 0.0
     ansi = (1+0.5*A)
@@ -446,22 +446,27 @@ def pres_bal(jh,jd_h,b):
     bt_jd = pd.concat([bt,jd_h.data_df]).sort_index()
     bt_jd = bt_jd.loc[~bt_jd.index.duplicated(),:]  #get rid of duplicated indices, otherwise reindex won't work
     bt_jd = bt_jd.interpolate().reindex(jh.data_df.index)
+
+    bt_jd_OpS = pd.concat([bt,jd_OpS.data_df]).sort_index()
+    bt_jd_OpS = bt_jd.loc[~bt_jd.index.duplicated(),:]  #get rid of duplicated indices, otherwise reindex won't work
+    bt_jd_OpS = bt_jd.interpolate().reindex(jh.data_df.index)
     
     pres_p = bt.n*1e6*bt.Temp*1.6e-19/1e-9/ansi #nPa 
     pres_b = bt.btot2*1e-18/(2*muo)/1e-9 #+ 0.15  #nPa
-    wh = (abs(jh.R) > 15) & (abs(jh.R) < 80) & (jh.data_df.n_sig/abs(jh.data_df.n) < 1000) & (jh.data_df.index < tpj[0])
+    wh = (abs(jh.R) > 15) & (abs(jh.R) < 100) & (jh.data_df.n_sig/abs(jh.data_df.n) < 100) & (jh.data_df.index < tpj[0])
     #d = {'Pp': pres_p[wh], 'Pb': pres_b[wh], 'R': jh.R[wh], 't': jh.data_df.index[wh], 'Phot': bt_jd.DATA[wh]}
-    d = {'Pp': pres_p[wh], 'Pb': pres_b[wh], 'R': jh.R[wh], 't': jh.data_df.index[wh], 'Phot': bt_jd.P[wh]}
+    d = {'Pp': pres_p[wh], 'Pb': pres_b[wh], 'R': jh.R[wh], 't': jh.data_df.index[wh], 'Phot': bt_jd.P[wh]+bt_jd_OpS.P[wh]}
     df = pd.DataFrame(data = d)
     #print('Phot...',df.Phot[wh])
-    plt.figure()
+    plt.figure(figsize=(12,8))
+    plt.rcParams.update({'font.size':22})
     plt.plot(df.R,df.Pp.rolling(10).mean(),'.',markersize=2.0,label='JADE Plasma pressure')
     plt.plot(df.R,df.Pb.rolling(10).mean(),'.',markersize=2.0,label='Mag pressure')
     plt.plot(df.R,df.Pp.rolling(10).mean()+df.Pb.rolling(10).mean()+df.Phot.rolling(10).mean()/1e-9,'.',markersize=2.0,label='total')
     plt.plot(df.R,df.Phot.rolling(10).mean()/1e-9,'.',markersize=2.0,label='JEDI pressure')
     #plt.plot(jd_h.R,jd_h.data_df.DATA.rolling(10).mean()/1e-9,'.',markersize=2.0,label='JEDI')
     plt.yscale('log')
-    plt.legend(loc='best')
+    plt.legend(loc='best',markerscale = 5.)
     plt.title('orbit: '+str(orbit))
     plt.xlabel('Radial Distance (RJ)')
     plt.ylabel('Pressure (nPa)')
@@ -633,9 +638,16 @@ temp_arr = np.empty(1,dtype=float)
 R_T_arr = np.empty(1,dtype=float)
 
 
-orbit = 6
-for i in range(orbit,orbit+1):
+H_He_arr = np.empty(1,dtype=float)
+R_H_He_arr = np.empty(1,dtype=float)
+phi_H_He_arr = np.empty(1,dtype=float)
+z_H_He_arr = np.empty(1,dtype=float)
+theta_H_He_arr =np.empty(1,dtype=float)
+
+orbit = 5
+for i in range(orbit,orbit+20):
     orbit = i
+    print('Orbit...',orbit)
     timeStart = orbitsData[orbit-1]
     timeEnd = orbitsData[orbit]
     
@@ -665,46 +677,84 @@ for i in range(orbit,orbit+1):
     jh = pickle.load(picklefile)
     
 
-    #jd_h = JEDI_MOM_Data(timeStart,timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments',
+    #jd_h = JEDI_MOM_Data(timeStart,timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments/complete/h5',
     #                     instrument=['p_heavy'])
 
-
-    jd_OpS= JEDI_MOM_h5(orbitsData[orbit-2],timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments',
+    """
+    jd_OpS= JEDI_MOM_h5(orbitsData[orbit-2],timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments/complete/h5',
                          instrument=['OpS'])
-    jd_Hp= JEDI_MOM_h5(orbitsData[orbit-2],timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments',
+    jd_Hp= JEDI_MOM_h5(orbitsData[orbit-2],timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments/complete/h5',
                          instrument=['Hp'])
-    jd_He2p= JEDI_MOM_h5(orbitsData[orbit-2],timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments',
+    jd_He2p= JEDI_MOM_h5(orbitsData[orbit-2],timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments/complete/h5',
                          instrument=['He2p'])
+    """
 
+    filename = './jedi_OpS_orbit_'+str(orbit)+'.pkl'
+    #jedi_file = open(filename, 'wb')
+    #pickle.dump(jd_OpS, jedi_file)
+    #jedi_file.close()
+    picklefile = open(filename,'rb')
+    jd_OpS = pickle.load(picklefile)
+    
+    filename = './jedi_Hp_orbit_'+str(orbit)+'.pkl'
+    #jedi_file = open(filename, 'wb')
+    #pickle.dump(jd_Hp, jedi_file)
+    #jedi_file.close()
+    picklefile = open(filename,'rb')
+    jd_Hp = pickle.load(picklefile)
 
-    plt.figure()
+    filename = './jedi_He2p_orbit_'+str(orbit)+'.pkl'
+    #jedi_file = open(filename, 'wb')
+    #pickle.dump(jd_He2p, jedi_file)
+    #jedi_file.close()
+    picklefile = open(filename,'rb')
+    jd_He2p = pickle.load(picklefile)
+
+    """
+    plt.figure(figsize=(12,8))
     tpj = jh.t[jh.R == jh.R.min()]
-    print('tpj...',tpj)
+    #print('tpj...',tpj)
     #print("p...",jd_OpS.data_df)
     #den = jd_He2p.Density
-    print('time...',timeStart,tpj)
+    #print('time...',timeStart,tpj)
     #tpj = '2017-05-19T19:14:57'
     
     wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.data_df.index < tpj[0])
-    print('OpS time...',jd_OpS.data_df.index)
+    #print('OpS time...',jd_OpS.data_df.index)
     #print(den[wh])
-    plt.plot(jd_OpS.data_df.R[wh],jd_OpS.data_df.Density[wh].rolling(20).mean(),label='O+S')
-    plt.plot(jd_Hp.data_df.R[wh],jd_Hp.data_df.Density[wh].rolling(20).mean(),label='H+')
-    plt.plot(jd_He2p.data_df.R[wh],jd_He2p.data_df.Density[wh].rolling(20).mean(),label='He++')
+    plt.plot(jd_OpS.data_df.R[wh],jd_OpS.data_df.Density[wh].rolling(20).mean(),'.',label='O+S')
+    plt.plot(jd_Hp.data_df.R[wh],jd_Hp.data_df.Density[wh].rolling(20).mean(),'.',label='H+')
+    plt.plot(jd_He2p.data_df.R[wh],jd_He2p.data_df.Density[wh].rolling(20).mean(),'.',label='He++')
     wh = (jh.data_df.n_sig/abs(jh.data_df.n) < 100) & (jh.data_df.index < tpj[0])
-    plt.plot(jh.R[wh],jh.data_df.n[wh],label='JAD_heavy')
-    plt.legend(loc='best')
+    #plt.plot(jh.R[wh],jh.data_df.n[wh],label='JAD_heavy')
+    plt.legend(loc='best',markerscale=5.0)
+    plt.title('orbit: '+str(orbit))
     plt.yscale('log')
-    plt.show()
-    plt.figure()
-    wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.data_df.index < tpj[0])
-    plt.plot(jd_Hp.data_df.R[wh],jd_Hp.data_df.Density[wh].rolling(20).mean()/jd_He2p.data_df.Density[wh].rolling(20).mean())
-    #plt.yscale('log')
     plt.xlabel('Radial Distance (RJ)')
-    plt.ylabel('H/He')
+    plt.ylabel('Pressure (nPa)')
     plt.show()
-    pres_p, pres_b, R_pres, t_pres = pres_bal(jh,jd_Hp,b)
-    
+
+    #plt.figure()
+    fig, ax = plt.subplots(figsize=(12,8))
+    wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.data_df.index < tpj[0])
+    H_He = jd_Hp.data_df.Density[wh].rolling(20).mean()/jd_He2p.data_df.Density[wh].rolling(20).mean()
+    H_He_arr = np.append(H_He_arr,H_He)
+    R_H_He_arr = np.append(R_H_He_arr,jd_Hp.data_df.R[wh])
+    phi_H_He_arr = np.append(phi_H_He_arr,myatan2(jd_Hp.y[wh],jd_Hp.x[wh]))
+    ax.plot(jd_Hp.data_df.R[wh],H_He,'.')
+    ax.set_yscale('log')
+    ax.set_xlabel('Radial Distance (RJ)')
+    ax.set_ylabel('H/He')
+    ax.set_title('orbit: '+str(orbit))
+    #ax2 = ax.twinx()
+    #wh = (jp.data_df.index > timeStart) & (jp.data_df.index < tpj[0])
+    #ax2.plot(jd_Hp.data_df.R[wh],jd_Hp.data_df.Density[wh].rolling(20).mean(),'r')
+    #ax2.set_ylabel('Density cm$^{-3}$')
+    #ax2.set_yscale('log')
+    plt.show()
+    #pres_p, pres_b, R_pres, t_pres = pres_bal(jh,jd_Hp,jd_OpS,b)
+    """
+
     """
     #jp = JAD_MOM_Data(timeStart, timeEnd, data_folder='/data/juno_spacecraft/data/jad_moments/AGU2020_moments',
     #                  instrument=['PROTONS', 'V03'])
@@ -764,9 +814,83 @@ for i in range(orbit,orbit+1):
     picklefile = open(filename,'rb')
     w = pickle.load(picklefile)
     """
-    """
+    tpj = jh.t[jh.R == jh.R.min()]
+    #wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.data_df.index < tpj[0]) & (jd_OpS.R > 20) & (np.abs(jd_OpS.z_cent) < 4) & (jd_Hp.data_df.Density > 0.0) & (jd_He2p.data_df.Density > 0.0) & (jd_Hp.bc_id == 1)
+    #wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.Req > 10) & (jd_Hp.data_df.Density > 0.0) & (jd_Hp.bc_id == 1) & (jd_He2p.data_df.Density > 0.0)
+    wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.Req > 10) & (jd_He2p.data_df.Density > 0.0) & (jd_Hp.bc_id == 1) & (jd_OpS.data_df.Density > 0.0) & (np.abs(jd_OpS.z_cent) < 2) & (jd_OpS.data_df.index < tpj[0])
+    #H_He = jd_Hp.data_df.Density[wh].rolling(10).mean()/jd_He2p.data_df.Density[wh].rolling(10).mean()
+    H_He = jd_He2p.data_df.Density[wh].rolling(10).mean()/jd_OpS.data_df.Density[wh].rolling(10).mean()
+    H_He_arr = np.append(H_He_arr,H_He)
+    R_H_He_arr = np.append(R_H_He_arr,jd_Hp.Req[wh])
+    phi_H_He_arr = np.append(phi_H_He_arr,myatan2(jd_Hp.y[wh],jd_Hp.x[wh]))
 
-"""
+    Rj = 7.14e4
+    #H_He_z_arr = np.append(H_He_z_arr,H_He)
+    z_H_He_arr = np.append(z_H_He_arr,jd_OpS.z_cent[wh])
+    #zR_H_He_arr = np.append(zR_vphi_arr,R)
+    theta_H_He_arr = np.append(theta_H_He_arr,myatan2(jd_OpS.z_cent[wh],jd_OpS.Req[wh]))
+    
+
+
+phi_H_He_arr = phi_H_He_arr + np.pi
+rbins = np.linspace(0,120,60)
+abins = np.linspace(0,2*np.pi,60)
+
+counts, _, _ = np.histogram2d(phi_H_He_arr, R_H_He_arr, bins=(abins,rbins))
+sums, _, _ = np.histogram2d(phi_H_He_arr, R_H_He_arr, weights=H_He_arr, bins=(abins,rbins))
+#sums, _, _ = np.histogram2d(theta_H_He_arr, R_H_He_arr, weights=np.log10(H_He_arr), bins=(abins,rbins))
+
+av_H_He = (sums/counts).T
+#wh = np.logical_not(np.isnan(av_E))
+#sigma_E = av_E
+#sigma_E = av_E[wh].std()
+
+phi, r = np.meshgrid(abins, rbins)
+fig, ax = plt.subplots(subplot_kw = dict(projection="polar"))
+pc = ax.pcolormesh(phi,r,av_H_He,cmap="magma_r",vmin=0,vmax=0.5)
+label_position=ax.get_rlabel_position()
+ax.text(np.radians(label_position-57),ax.get_rmax()/2.,'Radial Distance (R$_J$)',rotation=-20,ha='center',va='center')
+#ax.set_title('H/He: '+"{0:.4f}".format(av_H_He.mean()))
+ax.grid(linestyle=':')
+ax.set_thetamin(-20)
+ax.set_thetamax(90)
+ax.set_theta_offset(np.pi)
+cb = fig.colorbar(pc)
+cb.set_label('He/OpS')
+plt.show()
+
+
+#theta_H_He_arr = theta_vphi_arr 
+rbins = np.linspace(0,120,120)
+abins = np.linspace(-np.pi,np.pi,120)
+
+R = np.sqrt(R_H_He_arr**2 + z_H_He_arr**2)
+print('R...',R_H_He_arr)
+counts, _, _ = np.histogram2d(theta_H_He_arr, R, bins=(abins,rbins))
+sums, _, _ = np.histogram2d(theta_H_He_arr, R, weights=np.log10(np.abs(H_He_arr)), bins=(abins,rbins))
+#sums, _, _ = np.histogram2d(theta_H_He_arr, R, weights=H_He_arr, bins=(abins,rbins))
+
+phi, r = np.meshgrid(abins, rbins)
+fig, ax = plt.subplots(subplot_kw = dict(projection="polar"))
+ax.set_thetamin(40)
+ax.set_thetamax(-45)
+ax.set_theta_offset(-np.pi)
+ax.set_theta_direction(-1)
+
+vmin = -1.5
+vmax = 0.5
+pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="magma_r",vmin=vmin,vmax=vmax)
+#pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="seismic",norm=pltclr.SymLogNorm(linthresh = vmax/500, linscale=1.0,vmin=vmin,vmax=vmax))
+#pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="seismic",norm=pltclr.TwoSlopeNorm(vmin=vmin,vcenter=0, vmax=vmax))
+
+#ax.set_title('<L>: '+"{0:.2f}".format(av)+' kg/m/s')
+ax.grid(linestyle=':')
+cb = fig.colorbar(pc)
+cb.set_label('log10[He/O+S]')
+label_position=ax.get_rlabel_position()
+ax.text(np.radians(label_position+30),ax.get_rmax()/2.,'Radial Distance (R$_J$)',rotation=-40,ha='center',va='center')
+plt.show()
+
 """
 ind = R_Efld_arr.argsort()
 R_Efld_arr = R_Efld_arr[ind]

@@ -125,8 +125,8 @@ class PosData():
 class bc_ids:
     
     def get_mp_bc(self):
-        #bc_df = pd.read_csv('./wholecross5.csv')
-        bc_df = pd.read_csv('./crossevent7.csv')
+        bc_df = pd.read_csv('./wholecross5.csv')
+        #bc_df = pd.read_csv('./crossevent7.csv')
         bc_df.columns = ['DATETIME','ID']
         bc_df = bc_df.set_index('DATETIME')
         return bc_df
@@ -169,13 +169,15 @@ class bc_ids:
         a = 1.66*deg2rad
         b = 0.131
         R = np.sqrt(x**2 + y**2 + z**2)/7.14e4
+        Req = np.sqrt(x**2 + y**2)/7.14e4
         c = 1.62
         d = 7.76*deg2rad
         e = 249*deg2rad
         CentEq2 = (a*np.tanh(b*R - c) + d)*np.sin(lon*deg2rad - e)
         self.z_cent = positions.T[2]/7.14e4 - R*np.sin(CentEq2)
         self.R = R
-
+        self.Req = Req
+        
         for year in ['2016', '2017', '2018', '2019', '2020']:
             spice.furnsh(f'/data/juno_spacecraft/data/meta_kernels/juno_{year}.tm')
         
@@ -240,6 +242,7 @@ class WavData():
         self.start_time = start_time
         self.end_time = end_time
         self.data_files = self._get_files('CSV', data_folder, *instrument)
+        print('wav data files...',self.data_files)
         self.data_df = pd.DataFrame()
         self.freq = 0.0
         self.t = 0.0
@@ -406,6 +409,9 @@ class JAD_MOM_Data(bc_ids):
         self.bc_df = self.get_mp_bc()
         self.get_bc_mask()
         x,y,z = self.sys_3_data()
+        self.x = x
+        self.y = y
+        self.z = z
         #self.plot_jad_data()
 
     def _get_files(self,file_type, data_folder, *args):
@@ -537,7 +543,7 @@ class JAD_MOM_Data(bc_ids):
 class JEDI_MOM_h5(bc_ids):
 
     def __init__(self, start_time, end_time, data_folder='/data/juno_spacecraft/data/jedi_moments',
-                 instrument=['O+S']):
+                 instrument=['OpS']):
         
         self.start_time = start_time
         self.end_time = end_time
@@ -545,6 +551,7 @@ class JEDI_MOM_h5(bc_ids):
         self.data_files = self._get_files('h5', data_folder, *instrument)
         print(self.data_files)
         self.R = 0.0
+        self.Req = 0.0
         self.z_cent = 0.0
         
         self.Density = np.empty(0)
@@ -560,10 +567,13 @@ class JEDI_MOM_h5(bc_ids):
         self.t = 0.0
         self.data_df = pd.DataFrame()
         self._get_data()
-        #self.bc_id = 0.0
-        #self.bc_df = self.get_mp_bc()
-        #self.get_bc_mask()
-        #x,y,z = self.sys_3_data()
+        self.bc_id = 0.0
+        self.bc_df = self.get_mp_bc()
+        self.get_bc_mask()
+        x,y,z = self.sys_3_data()
+        self.x = x
+        self.y = y
+        self.z = z
         
     def _get_files(self,file_type, data_folder, *args):
         import os
@@ -643,10 +653,12 @@ class JEDI_MOM_h5(bc_ids):
                                    minute = int(self.Min[i]), second = int(self.Sec[i])))
 
 
-        self.t = np.asarray(self.t, dtype='datetime64')
+        #self.t = np.asarray(self.t, dtype='datetime64')
+        #print('JEDI time...',self.t)
         self.data_df.index = self.t
         self.data_df.index = self.data_df.index.astype('datetime64[ns]').floor('S')
-
+        self.t = self.data_df.index
+        #print('JEDI time...',self.t)
         self.data_df['Density'] = self.Density
         self.data_df['P'] = self.P
         self.data_df['R'] = self.R
@@ -706,6 +718,9 @@ class JEDI_MOM_Data(bc_ids):
         self.bc_df = self.get_mp_bc()
         self.get_bc_mask()
         x,y,z = self.sys_3_data()
+        self.x = x
+        self.y = y
+        self.z = z
         #self.plot_jad_data()
 
     def _get_files(self,file_type, data_folder, *args):
@@ -1503,91 +1518,6 @@ class PDS3Label():
                     
         return self.dataNameDict #The dictionary is returned
 
-class JadClass(bc_ids):
-    def __init__(self,timeStart, timeEnd):
-        self.t = 0.0
-        self.jad_arr = 0.0
-        self.jad_mean = 0.0
-        self.timeStart = timeStart
-        self.timeEnd = timeEnd
-        self.z_cent = 0.0
-        self.R = 0.0
-        self.bc_df = 0.0
-        self.bc_id = 0.0
-
-        self.read_data()
-        x,y,z = self.sys_3_data()
-        self.bc_df = self.get_mp_bc()
-        self.get_bc_mask()
-
-        
-    def read_data(self):      
-        dataFolder = pathlib.Path('/data/juno_spacecraft/data/jad')
-        datFiles = _get_files(self.timeStart,self.timeEnd,'.DAT',dataFolder,'JAD_L30_LRS_ION_ANY_CNT') 
-        jadeIon = JadeData(datFiles,self.timeStart,self.timeEnd)
-        print('getting ion data....')
-        jadeIon.getIonData()
-        print('ion data retrieved...')
-        #plt.figure()
-        #if date in jadeIon.dataDict.keys(): #Ion spectrogram portion
-        jadeIonData = jadeIon.dataDict
-        jadeIonData = jadeIon.ion_df  
-        
-        self.jad_mean = []
-        self.t = jadeIon.ion_df.index
-        self.jad_arr = jadeIon.ion_df.to_numpy()
-        #plt.imshow(np.transpose(jad_arr),origin='lower',aspect='auto',cmap='jet')
-        #plt.show()
-        sz = self.jad_arr.shape
-        for i in range(sz[0]):
-            self.jad_mean.append(self.jad_arr[i,:-2].mean())
-            #self.jad_max.append(self.jad_arr[i,:-2].max())
-            #plt.figure()
-            #plt.plot(jad_tm,jad_mean)
-            #plt.plot(jad_tm,jad_max)
-            #plt.show()
-        self.jad_mean = np.array(self.jad_mean)
-
-    def get_jad_dist(self):
-        data = self.jad_mean
-        wh = np.logical_and((self.z_cent < 1), (self.z_cent > -1))
-        print(wh)
-        #data = data[wh]
-        plt.figure()
-        plt.hist(data)
-        plt.show()
-
-    #def get_mp_bc():
-    #    bc_df = pd.read_csv('./wholecross5.csv')
-    #    #bc_df = bc_df.drop(['NOTES'], axis=1)
-    #    bc_df.columns = ['DATETIME','ID']
-    #    #datetime = bc_df['DATE'][:] + ' ' + bc_df['TIME'][:]
-    #    #bc_df['DATETIME'] = datetime
-    #    bc_df = bc_df.set_index('DATETIME')
-    #    return bc_df
-        
-    #def get_mp_bc(self):
-    #    self.bc_df = pd.read_csv('./jno_crossings_master_fixed_v6.txt')
-    #    self.bc_df = self.bc_df.drop(['NOTES'], axis=1)
-    #    self.bc_df.columns = ['CASE','ORBIT','DATE', 'TIME', 'ID']
-    #    datetime = self.bc_df['DATE'][:] + ' ' + self.bc_df['TIME'][:]
-    #    self.bc_df['DATETIME'] = datetime
-    #    self.bc_df = self.bc_df.set_index('DATETIME')
-    #    return 
-
-    #def get_bc_mask(self):
-    #    self.bc_id = np.ones(len(self.jad_tm))
-    #    id = self.bc_df['ID'][:]
-    #    bc_t = self.bc_df.index
-    #    t = self.jad_tm
-    #    self.bc_id[t < bc_t[0]] = 0 #no ID
-    #    for i in range(len(bc_t)-1):
-    #        mask = np.logical_and(bc_t[i] <= t,t < bc_t[i+1])
-    #        if id[i] == 1:
-    #            self.bc_id[mask] = 0
-    #    return 
-
-
 
     
 class JadeData():
@@ -1603,7 +1533,7 @@ class JadeData():
         self.dataDict = {}
         self.ion_df = pd.DataFrame({'DATA':[]})
         self.ion_dims = None
-        self.elec_df = pd.DataFrame()
+        self.elec_df = pd.DataFrame({'ELC_DATA':[]})
         self.elec_dims = None
         
 
@@ -1701,9 +1631,8 @@ class JadeData():
                     temp = struct.unpack(dataObjectData['FORMAT']*dataObjectData['DIM1']*dataObjectData['DIM2'],dataSlice) #The binary format of the data is multiplied by the dimensions to allow unpacking of all data at once
                     temp = np.asarray(temp).reshape(dataObjectData['DIM1'],dataObjectData['DIM2'])  #The data is put into a matrix of the size defined in the label
                     dataArray = [np.mean(row) for row in temp]  #Each rows average is found to have one column 
-                    
-                    temp_df = pd.DataFrame({dateTimeStamp: [np.log(dataArray)]}).transpose()
-                    self.elec_df = self.elec_df.append(temp_df)                    
+                    temp_df = pd.DataFrame({dateTimeStamp: (dataArray)}).transpose()
+                    self.elec_df = self.elec_df.append(temp_df)
 
                     dataObjectData = label.dataNameDict['DIM1_E'] #Label data for the data is found 
                     startByte = dataObjectData['START_BYTE']
@@ -1711,9 +1640,145 @@ class JadeData():
                     dataSlice = data[startByte:endByte] #Slice containing the data for that row is gotten
                     temp = struct.unpack(dataObjectData['FORMAT']*dataObjectData['DIM1']*dataObjectData['DIM2'],dataSlice) #The binary format of the data is multiplied by the dimensions to allow unpacking of all data at once
                     temp = np.asarray(temp).reshape(dataObjectData['DIM1'],dataObjectData['DIM2'])  #The data is put into a matrix of the size defined in the label
-                    dataArray = [row[0] for row in temp]  #Each rows average is found to have one column 
+                    dataArray = [row[0] for row in temp]  #Each rows average is found to have one column
+                    #dataArray = [np.mean(row) for row in temp]  #Each rows average is found to have one column 
                     if self.elec_dims is None:
                         self.elec_dims = dataArray
+
+    
+class JadClass(bc_ids):
+    def __init__(self,timeStart, timeEnd, species='ION'):  #type must be either "ION" or "ELC"
+        self.t = 0.0
+        self.t_e = 0.0
+        self.energy_scale = 0.0
+        #self.energy_scale_elec = 0.0
+        self.jad_arr = 0.0
+        #self.jad_e_arr = 0.0
+        self.jad_mean = 0.0
+        self.timeStart = timeStart
+        self.timeEnd = timeEnd
+        self.z_cent = 0.0
+        self.R = 0.0
+        self.bc_df = 0.0
+        self.bc_id = 0.0
+        self.species = species
+
+        #self.read_ion_data()
+        self.read_data()
+        #x,y,z = self.sys_3_data()
+        self.bc_df = self.get_mp_bc()
+        self.get_bc_mask()
+        
+    def read_data(self):      
+        dataFolder = pathlib.Path('/data/juno_spacecraft/data/jad')
+        datFiles = _get_files(self.timeStart,self.timeEnd,'.DAT',dataFolder,'JAD_L30_LRS_'+self.species+'_ANY_CNT') 
+        print('getting jade data....'+self.species)
+        if (self.species == 'ION'):
+            jadeIon = JadeData(datFiles,self.timeStart,self.timeEnd)
+            jadeIon.getIonData()
+            jadeIonData = jadeIon.dataDict
+            jadeIonData = jadeIon.ion_df
+            
+            self.jad_mean = []
+            self.t = jadeIon.ion_df.index
+            self.jad_arr = jadeIon.ion_df.to_numpy().transpose()[: -1,:]
+            print('jad_arr...',np.shape(self.jad_arr))
+            self.energy_scale = np.array(jadeIon.ion_dims)/1000
+            #plt.figure()
+            #plt.pcolormesh(self.t,self.energy_scale,np.log(self.jad_arr),cmap='jet')
+            #plt.yscale('log')
+            #plt.show()
+            sz = self.jad_arr.shape
+            for i in range(sz[0]):
+                self.jad_mean.append(self.jad_arr[i,:-2].mean())
+                #self.jad_max.append(self.jad_arr[i,:-2].max())
+                #plt.figure()
+                #plt.plot(jad_tm,jad_mean)
+                #plt.plot(jad_tm,jad_max)
+                #plt.show()
+            self.jad_mean = np.array(self.jad_mean)
+
+        if (self.species == 'ELC'):
+            jadeElc = JadeData(datFiles,self.timeStart,self.timeEnd)
+            jadeElc.getElecData()
+            jadeElcData = jadeElc.dataDict
+            jadeElcData = jadeElc.elec_df
+            
+            self.t = jadeElc.elec_df.index
+            self.jad_arr = jadeElc.elec_df.to_numpy().transpose()[: -1,:]
+            self.energy_scale = np.array(jadeElc.elec_dims)/1000
+        print('jade data retrieved...')
+
+        
+    def read_elec_data(self):      
+        dataFolder = pathlib.Path('/data/juno_spacecraft/data/jad')
+        datFiles = _get_files(self.timeStart,self.timeEnd,'.DAT',dataFolder,'JAD_L30_LRS_ELC_ANY_CNT') 
+        jadeElc = JadeData(datFiles,self.timeStart,self.timeEnd)
+        print('getting electron data....')
+        jadeElc.getElecData()
+        print('electron data retrieved...')
+        #plt.figure()
+        #if date in jadeIon.dataDict.keys(): #Ion spectrogram portion
+        jadeElcData = jadeElc.dataDict
+        jadeElcData = jadeElc.elec_df
+        
+        self.t = jadeElc.elec_df.index
+        self.jad_e_arr = jadeElc.elec_df.to_numpy().transpose()[: -1,:]
+        self.energy_scale_elec = np.array(jadeElc.elec_dims)/1000
+        #plt.figure()
+        #plt.pcolormesh(self.t,self.energy_scale_elec,np.log(self.jad_e_arr),cmap='jet')
+        #plt.yscale('log')
+        #plt.show()
+        #sz = self.jad_i_arr.shape
+        #for i in range(sz[0]):
+        #    self.jad_mean.append(self.jad_i_arr[i,:-2].mean())
+        #    #self.jad_max.append(self.jad_arr[i,:-2].max())
+        #    #plt.figure()
+        #    #plt.plot(jad_tm,jad_mean)
+        #    #plt.plot(jad_tm,jad_max)
+        #    #plt.show()
+        #self.jad_mean = np.array(self.jad_mean)
+
+    def get_jad_dist(self):
+        data = self.jad_mean
+        wh = np.logical_and((self.z_cent < 1), (self.z_cent > -1))
+        print(wh)
+        #data = data[wh]
+        plt.figure()
+        plt.hist(data)
+        plt.show()
+
+    #def get_mp_bc():
+    #    bc_df = pd.read_csv('./wholecross5.csv')
+    #    #bc_df = bc_df.drop(['NOTES'], axis=1)
+    #    bc_df.columns = ['DATETIME','ID']
+    #    #datetime = bc_df['DATE'][:] + ' ' + bc_df['TIME'][:]
+    #    #bc_df['DATETIME'] = datetime
+    #    bc_df = bc_df.set_index('DATETIME')
+    #    return bc_df
+        
+    #def get_mp_bc(self):
+    #    self.bc_df = pd.read_csv('./jno_crossings_master_fixed_v6.txt')
+    #    self.bc_df = self.bc_df.drop(['NOTES'], axis=1)
+    #    self.bc_df.columns = ['CASE','ORBIT','DATE', 'TIME', 'ID']
+    #    datetime = self.bc_df['DATE'][:] + ' ' + self.bc_df['TIME'][:]
+    #    self.bc_df['DATETIME'] = datetime
+    #    self.bc_df = self.bc_df.set_index('DATETIME')
+    #    return 
+
+    #def get_bc_mask(self):
+    #    self.bc_id = np.ones(len(self.jad_tm))
+    #    id = self.bc_df['ID'][:]
+    #    bc_t = self.bc_df.index
+    #    t = self.jad_tm
+    #    self.bc_id[t < bc_t[0]] = 0 #no ID
+    #    for i in range(len(bc_t)-1):
+    #        mask = np.logical_and(bc_t[i] <= t,t < bc_t[i+1])
+    #        if id[i] == 1:
+    #            self.bc_id[mask] = 0
+    #    return 
+
+
 
 if __name__ == '__main__':
     start = '2016-07-31T00:00:00'
@@ -1743,3 +1808,81 @@ if __name__ == '__main__':
                          , pickle_file)
             print(f'Saved data from {start_datetime} to {end_datetime}')
             pickle_file.close()
+
+
+class HuscherClass:
+    def __init__(self, timeStart, timeEnd):
+        self.h = 0
+        self.h_sig = 0
+        self.h_r = 0
+        self.p = 0
+        self.p_sig = 0
+        self.p_r = 0
+        self.t = 0
+        self.timeStart = timeStart
+        self.timeEnd = timeEnd
+
+    def get_proton_density(self):
+        n_df = pd.read_csv('/data/juno_spacecraft/data/jad_moments/2_protons_moments_2021July.csv')
+        n_df.columns = ['UTC', 'ACCUMULATION_TIME', 'ISSUES0', 'ISSUES1', 'EV_PER_Q_RANGE0', 'EV_PER_Q_RANGE1', 'SC_POS_R', 'N_CC', 'N_SIGMA_CC']
+        n_df['UTC'] = pd.to_datetime(n_df['UTC'], exact = False, format='%Y-%jT%H:%M:%S')
+        n_df = n_df.set_index('UTC')
+        n_dens = n_df['N_CC'][self.timeStart:self.timeEnd]
+        n_sig = n_df['N_SIGMA_CC'][self.timeStart:self.timeEnd]
+        n_r =  n_df['SC_POS_R'][self.timeStart:self.timeEnd]
+        #wh = np.logical_not(np.isnan(n_dens))
+        #n_dens = n_dens[wh]
+        #n_sig = n_sig[wh]
+        #n_r = n_r[wh]
+        #print(n_dens[np.isnan(n_dens)])
+        return n_dens,n_sig,n_r,n_df
+        
+    def get_heavy_density(self):
+        n_df = pd.read_csv('/data/juno_spacecraft/data/jad_moments/3_heavyions_moments_2021July.csv')
+        n_df.columns = ['UTC', 'ACCUMULATION_TIME', 'ISSUES0', 'ISSUES1', 'EV_PER_Q_RANGE0', 'EV_PER_Q_RANGE1', 'SC_POS_R', 'N_CC', 'N_SIGMA_CC']
+        n_df['UTC'] = pd.to_datetime(n_df['UTC'], exact = False, format='%Y-%jT%H:%M:%S')
+        n_df = n_df.set_index('UTC')
+        n_dens = n_df['N_CC'][self.timeStart:self.timeEnd]
+        n_sig = n_df['N_SIGMA_CC'][self.timeStart:self.timeEnd]
+        n_r =  n_df['SC_POS_R'][self.timeStart:self.timeEnd]
+        #wh = np.logical_not(np.isnan(n_dens))
+        #n_dens = n_dens[wh]
+        #n_sig = n_sig[wh]
+        #n_r = n_r[wh]
+        #print(n_dens[np.isnan(n_dens)])
+        return n_dens,n_sig,n_r
+
+    def read_density(self):
+        np_den,np_sig,np_r = self.get_proton_density()
+        nh_den,nh_sig,nh_r = self.get_heavy_density()
+
+        whh = nh_sig < 100*nh_den
+        whp = np_sig < 100*np_den
+
+        np_den = np_den[whp]
+        np_sig = np_sig[whp]
+        np_r = np_r[whp]
+    
+        nh_den = nh_den[whh]
+        nh_sig = nh_sig[whh]
+        nh_r = nh_r[whh]
+        
+        if (len(np_den) < len(nh_den)):
+            nh_den = nh_den[np_den.index]
+            nh_sig = nh_sig[np_sig.index]
+            nh_r = nh_r[np_r.index]
+            tden = np_r.index
+        else:
+            np_den = np_den[nh_den.index]
+            np_sig = np_sig[nh_sig.index]
+            np_r = np_r[nh_r.index]
+            tden = nh_r.index
+
+        self.h = nh_den.to_numpy()
+        self.h_sig = nh_sig.to_numpy()
+        self.h_r = nh_r.to_numpy()
+        self.p = np_den.to_numpy()
+        self.p_sig = np_sig.to_numpy()
+        self.p_r = np_r.to_numpy()
+        self.t = tden.to_numpy()        
+        return
