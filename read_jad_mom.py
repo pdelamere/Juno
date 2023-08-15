@@ -60,8 +60,8 @@ def plot_jp_jh_data(b,jp,jh,j,w,ji,je,sig_max,win,orbit,maxR):
     ax[axid].set_ylabel('Temp (eV)') 
     ax1 = ax[axid].twinx()
     ax1.set_ylabel('z_cent')
-    ax1.plot(j.t,j.z_cent, color='grey',linewidth=0.5)
-    ax1.plot(j.t,np.zeros(len(j.t)),':',color='grey',linewidth=0.5)
+    ax1.plot(jp.t,jp.z_cent, color='grey',linewidth=0.5)
+    ax1.plot(jp.t,np.zeros(len(jp.t)),':',color='grey',linewidth=0.5)
 
     
     """
@@ -100,8 +100,8 @@ def plot_jp_jh_data(b,jp,jh,j,w,ji,je,sig_max,win,orbit,maxR):
     ax[axid].plot(jh.data_df.vphi[wh].rolling(win).mean(),'.',markersize=1.0)
     ax2 = ax[axid].twinx()
     ax2.set_ylabel('z_cent')
-    ax2.plot(j.t,j.z_cent, color='grey',linewidth=0.5)
-    ax2.plot(j.t,np.zeros(len(j.t)),':',color='grey',linewidth=0.5)
+    ax2.plot(jp.t,jp.z_cent, color='grey',linewidth=0.5)
+    ax2.plot(jp.t,np.zeros(len(jp.t)),':',color='grey',linewidth=0.5)
     
     arr = w.data_df.to_numpy()
     arr = arr.transpose()
@@ -154,8 +154,8 @@ def plot_jp_jh_vtheta(b,jp,jh,j,sig_max,win,orbit,maxR):
     #ax[0].plot(jh.data_df.vr[wh],'.',markersize=1.0)
     ax1 = ax[0].twinx()
     ax1.set_ylabel('z_cent')
-    ax1.plot(j.t,j.z_cent, color='grey',linewidth=0.5)
-    ax1.plot(j.t,np.zeros(len(j.t)),':',color='grey',linewidth=0.5)
+    ax1.plot(jp.t,jp.z_cent, color='grey',linewidth=0.5)
+    ax1.plot(jp.t,np.zeros(len(jp.t)),':',color='grey',linewidth=0.5)
     
     wh = (jp.data_df.vtheta_sig/abs(jp.data_df.vtheta) < sig_max) & (jp.bc_id == 1) & (jp.R < maxR)
     ax[1].plot(jp.data_df.vtheta[wh].rolling(win).mean(),'.',markersize=1.0)
@@ -165,8 +165,8 @@ def plot_jp_jh_vtheta(b,jp,jh,j,sig_max,win,orbit,maxR):
     ax[1].plot(jh.data_df.vtheta[wh].rolling(win).mean(),'.',markersize=1.0)
     ax2 = ax[1].twinx()
     ax2.set_ylabel('z_cent')
-    ax2.plot(j.t,j.z_cent, color='grey',linewidth=0.5)
-    ax2.plot(j.t,np.zeros(len(j.t)),':',color='grey',linewidth=0.5)
+    ax2.plot(jp.t,jp.z_cent, color='grey',linewidth=0.5)
+    ax2.plot(jp.t,np.zeros(len(jp.t)),':',color='grey',linewidth=0.5)
     
     #wh = (jp.data_df.vphi_sig/abs(jp.data_df.vphi) < sig_max) & (jp.bc_id == 1) & (jp.R < maxR)
     wh = (jp.data_df.vphi_sig/abs(jp.data_df.vphi) < sig_max) & (jp.R < maxR)
@@ -177,8 +177,8 @@ def plot_jp_jh_vtheta(b,jp,jh,j,sig_max,win,orbit,maxR):
     ax[2].plot(jh.data_df.vphi[wh].rolling(win).mean(),'.',markersize=1.0)
     ax3 = ax[2].twinx()
     ax3.set_ylabel('z_cent')
-    ax3.plot(j.t,j.z_cent, color='grey',linewidth=0.5)
-    ax3.plot(j.t,np.zeros(len(j.t)),':',color='grey',linewidth=0.5)
+    ax3.plot(jp.t,jp.z_cent, color='grey',linewidth=0.5)
+    ax3.plot(jp.t,np.zeros(len(jp.t)),':',color='grey',linewidth=0.5)
     
     
 def g_mean(x):
@@ -408,8 +408,11 @@ def get_Walen(jp,jh,b,winsz):
     vpar0 = vpar
     vtot2 = bt.vr**2 + bt.vtheta**2 + bt.vphi**2
 
-    wh = (bt.index < tpj[0]) & (jp.R > 10)
-    whh = (bth.index < tpj[0]) & (jh.R > 10)
+    #wh = (bt.index < tpj[0]) & (jp.R > 10)
+    #whh = (bth.index < tpj[0]) & (jh.R > 10)
+
+    wh = (jp.R > 10)
+    whh = (jh.R > 10)
     vperp = np.sqrt(vtot2[wh] - vpar[wh]**2)
     vperp = vperp.rolling(10).mean()
     vperp0 = np.sqrt(vtot2 - vpar**2)
@@ -424,7 +427,7 @@ def get_Walen(jp,jh,b,winsz):
     vphi = bt.vphi[wh].to_numpy()
     
     va = (bperp[wh]*1e-9/np.sqrt(bt.n[wh]*1e6*1.6e-27*np.pi*4e-7)).interpolate()
-    va = va.rolling(10).mean()
+    va = va.rolling(1).mean()
     va0 = va
     
     whnan = np.logical_not(np.isnan(va))
@@ -475,9 +478,11 @@ def get_Walen(jp,jh,b,winsz):
     ax[1].plot(bt.Bphi[wh],label='Bphi')
     ax[1].legend(loc='best')
     ax[1].set_ylabel('B (nT)')
+  
     ax[2].plot(t,abs(dva)/1e3,':',markersize=1.0,label='dv_A')
     ax[2].plot(t,abs(dv),':',markersize=1.0,label='dv')
     ax[2].legend(loc='best')
+    ax[2].set_yscale('log')
     ax[2].set_ylim([0,2000])
     #ax[2].plot(np.roll(va/1e3,1),'.')
     ax[2].set_ylabel('dv_A, dv (km/s)')
@@ -485,15 +490,16 @@ def get_Walen(jp,jh,b,winsz):
     d = {'dv': dv, 'dva': dva}
     dv_df = pd.DataFrame(data = d)
     dv_df.index = t
-    ax[3].plot(dv_df.dv.rolling(10).corr(dv_df.dva).rolling(100).mean(),'.',markersize=1.0)
+    ax[3].plot(dv_df.dv.rolling(10).corr(dv_df.dva).rolling(10).mean(),'.',markersize=1.0)
+    #ax[3].plot(dv_df.dv.rolling(10).corr(dv_df.dva),'.',markersize=1.0)
     ax[3].set_ylabel('corr coeff')
     #ax[3].set_ylim([-1000,1000])
     #ax[3].set_ylabel('v (km/s)')
-    ax[4].plot(abs(vpar0[wh].rolling(10).mean()),'.',markersize=1.0,label='vpar')
-    ax[4].plot(vperp0[wh].rolling(10).mean(),'.',markersize=1.0,label='vperp')
-    ax[4].plot(bt.vphi.rolling(10).mean(),label='vphi')
-    ax[4].plot(bt.vtheta.rolling(10).mean(),label='vtheta')
-    ax[4].plot(bt.vr.rolling(10).mean(),label='vr')
+    ax[4].plot(abs(vpar0[wh].rolling(1).mean()),'.',markersize=1.0,label='vpar')
+    ax[4].plot(vperp0[wh].rolling(1).mean(),'.',markersize=1.0,label='vperp')
+    ax[4].plot(bt.vphi.rolling(1).mean(),label='vphi')
+    ax[4].plot(bt.vtheta.rolling(1).mean(),label='vtheta')
+    ax[4].plot(bt.vr.rolling(1).mean(),label='vr')
     ax[4].plot(np.sqrt(bt.vr**2 + bt.vtheta**2 + bt.vphi**2).rolling(10).mean(),label='vtot')
     ax[4].legend(loc='best')
     ax[4].set_ylabel('v (km/s)')
@@ -651,7 +657,7 @@ def get_vphi_R(jp,orbit):
 
 def get_vphi_z(jp,orbit):
     tpj = jp.t[jp.R == jp.R.min()]
-    wh = (jp.data_df.vphi_sig/abs(jp.data_df.vphi) < 10) & (jp.bc_id == 1) & (jp.R > 10) 
+    wh = (jp.data_df.vphi_sig/abs(jp.data_df.vphi) < 10) & (jp.bc_id == 1) & (jp.R > 5) 
     return jp.data_df.vphi[wh], jp.z_cent[wh], jp.Req[wh]
 
 def get_density_z(jp,orbit):
@@ -721,13 +727,17 @@ def get_v_vs_n(jp,jh):
 def vphi_vtheta_hodo(timeStart, timeEnd, jp):
     wh = (jp.data_df.index > timeStart) & (jp.data_df.index < timeEnd) & (jp.data_df.vphi_sig/abs(jp.data_df.vphi) < 10)
     plt.figure()
-    vphi = jp.data_df.vphi[wh].rolling(20).mean()
-    vtheta = jp.data_df.vtheta[wh].rolling(20).mean()
+    jp.data_df['z_cent'] = jp.z_cent
+    vphi = jp.data_df.vphi[wh].rolling(10).mean()
+    vtheta = jp.data_df.vtheta[wh].rolling(10).mean()
     tind = np.linspace(0,255,len(vphi))
+    z_mag = jp.data_df.z_cent[wh].rolling(10).mean()
     plt.plot(vphi,vtheta)
     plt.scatter(vphi,vtheta,c = tind, ec = 'k')
     plt.xlabel('vphi')
     plt.ylabel('vtheta')
+    plt.show()
+    plt.scatter(z_mag,vtheta,c=tind,ec='k')
     plt.show()
     
 timeStart =  '2017-02-28T22:55:48'
@@ -791,14 +801,18 @@ z_vphi_arr = np.empty(1,dtype=float)
 zR_vphi_arr = np.empty(1,dtype=float)
 theta_vphi_arr = np.empty(1,dtype=float)
 
-orbit = 5
-for i in range(orbit,orbit+20):
+orbit = 22
+#for i in range(5,25-1):
+for i in range(5,23):
     orbit = i
 
     timeStart = orbitsData[orbit-1]
     timeEnd = orbitsData[orbit]
-    print('orbit...',orbit,timeStart,timeEnd
-    )    
+
+    #timeStart = '2017-09-13T18:00:00'
+    #timeEnd =  '2017-09-15T18:00:00'
+    
+    print('orbit...',orbit,timeStart,timeEnd)    
     #b = MagClass(timeStart,timeEnd)
     #j = JadClass(timeStart,timeEnd)
     
@@ -824,13 +838,13 @@ for i in range(orbit,orbit+20):
     picklefile = open(filename,'rb')
     ji = pickle.load(picklefile)
 
-    ##je = JadClass(timeStart,timeEnd,species='ELC')
-    #filename = './jad_elec_spec_orbit_'+str(orbit)+'.pkl'
-    ##jad_file = open(filename, 'wb')
-    ##pickle.dump(je, jad_file)
-    ##jad_file.close()
-    #picklefile = open(filename,'rb')
-    #je = pickle.load(picklefile)
+    #je = JadClass(timeStart,timeEnd,species='ELC')
+    filename = './jad_elec_spec_orbit_'+str(orbit)+'.pkl'
+    #jad_file = open(filename, 'wb')
+    #pickle.dump(je, jad_file)
+    #jad_file.close()
+    picklefile = open(filename,'rb')
+    je = pickle.load(picklefile)
     
     """
     jp = JAD_MOM_Data(timeStart, timeEnd, data_folder='/data/juno_spacecraft/data/jad_moments/AGU2020_moments',
@@ -849,8 +863,8 @@ for i in range(orbit,orbit+20):
     jad_file = open(filename, 'wb')
     pickle.dump(jh,jad_file)
     jad_file.close()
-    """
     
+    """
     filename = './jad_protons_orbit_'+str(orbit)+'.pkl'
     picklefile = open(filename,'rb')
     jp = pickle.load(picklefile)
@@ -858,7 +872,7 @@ for i in range(orbit,orbit+20):
     filename = './jad_heavies_orbit_'+str(orbit)+'.pkl'
     picklefile = open(filename,'rb')
     jh = pickle.load(picklefile)
-    
+
     
     filename = './wav_orbit_'+str(orbit)+'.pkl'
     picklefile = open(filename,'rb')
@@ -887,12 +901,12 @@ for i in range(orbit,orbit+20):
 
     #pres_p, pres_b, R_pres, t_pres = pres_bal(jh,b)
 
-    #bt, bperp = get_Walen(jp,jh,b,100)
+    #bt, bperp = get_Walen(jp,jh,b,10)
     #bt, bperp = get_Poynting(jp,jh,b,40)
     #get_v_vs_n(jp,jh)
 
-    #tSrt = '2017-07-26T00:00:00'
-    #tEnd = '2017-07-28T00:00:00'
+    #tSrt = '2017-06-22T00:00:00'
+    #tEnd = '2017-07-08T00:00:00'
     #vphi_vtheta_hodo(tSrt, tEnd, jp)
     
     vphi, R, xv, yv, zv = get_vphi_R(jp,orbit)
@@ -900,7 +914,8 @@ for i in range(orbit,orbit+20):
     phi_vphi_arr = np.append(phi_vphi_arr,myatan2(yv,xv))
     R_vphi_arr = np.append(R_vphi_arr,R)
     
-    vphi, z, R = get_entropy_z(jp,orbit)
+    #vphi, z, R = get_entropy_z(jp,orbit)
+    vphi, z, R = get_vphi_z(jp,orbit)
     vphiz_arr = np.append(vphiz_arr,vphi)
     z_vphi_arr = np.append(z_vphi_arr,z)
     zR_vphi_arr = np.append(zR_vphi_arr,R)
@@ -1094,7 +1109,7 @@ cb.set_label('vphi (km/s)')
 
 plt.figure()
 df = pd.Series(data = np.abs(vphiz_arr), index = z_vphi_arr)
-wh = zR_vphi_arr > 10.0
+wh = zR_vphi_arr > 5.0
 plt.plot(df[wh],'.')
 #plt.plot(df[wh].rolling(100).mean(),'.')
 plt.ylabel('vphi (km/s)')
@@ -1110,25 +1125,46 @@ theta_vphi_arr = theta_vphi_arr
 rbins = np.linspace(0,120,120)
 abins = np.linspace(-np.pi,np.pi,120)
 
+#vphiz_bin_arr = np.empty_like(vphiz_arr,dtype=float)  #+/- 1 for flow direction
+#whp = vphiz_arr >= 0
+#print(whp)
+#vphiz_bin_arr[whp] = 1
+#whn = vphiz_arr < 0
+#print(whn)
+#vphiz_bin_arr[whn] = -1
+#print(vphiz_bin_arr)
+
 R = np.sqrt(zR_vphi_arr**2 + z_vphi_arr**2)
 counts, _, _ = np.histogram2d(theta_vphi_arr, R, bins=(abins,rbins))
-sums, _, _ = np.histogram2d(theta_vphi_arr, R, weights=np.log10(np.abs(vphiz_arr)), bins=(abins,rbins))
-#sums, _, _ = np.histogram2d(theta_vphi_arr, R, weights=vphiz_arr, bins=(abins,rbins))
+print('counts...',np.size(counts))
+retstd = scipy.stats.binned_statistic_2d(theta_vphi_arr, R, vphiz_arr, statistic='std', bins=[abins,rbins])
+retmean = scipy.stats.binned_statistic_2d(theta_vphi_arr, R, vphiz_arr, statistic='mean', bins=[abins,rbins])
+retcnt = scipy.stats.binned_statistic_2d(theta_vphi_arr, R, vphiz_arr, statistic='count', bins=[abins,rbins])
+retmax = scipy.stats.binned_statistic_2d(theta_vphi_arr, R, vphiz_arr, statistic='max', bins=[abins,rbins])
+retmin = scipy.stats.binned_statistic_2d(theta_vphi_arr, R, vphiz_arr, statistic='min', bins=[abins,rbins])
+print('counts...',np.size(retstd.statistic))
+#Sums, _, _ = np.histogram2d(theta_vphi_arr, R, weights=np.log10(np.abs(vphiz_arr)), bins=(abins,rbins))
+sums, _, _ = np.histogram2d(theta_vphi_arr, R, weights=vphiz_arr, bins=(abins,rbins))
 
 phi, r = np.meshgrid(abins, rbins)
 fig, ax = plt.subplots(subplot_kw = dict(projection="polar"))
-ax.set_thetamin(45)
-ax.set_thetamax(-50)
+ax.set_thetamin(90)
+ax.set_thetamax(-90)
 ax.set_theta_offset(-np.pi)
 ax.set_theta_direction(-1)
-pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="magma_r",vmin=3.5,vmax=6)
+#ax.set_rorigin(-20)
+#pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="magma_r",vmin=3.5,vmax=6)
 #vmin = -3.5
 #vmax = 6.0
 #pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="seismic",vmin=vmin,vmax=vmax)
 
 #pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="seismic",vmin=-500,vmax=500)
+pc = ax.pcolormesh(phi,r,(retmean.statistic).T,cmap="coolwarm",vmin=-400,vmax=400)
+#pc = ax.pcolormesh(phi,r,(retmean.statistic/retstd.statistic).T,cmap="seismic",vmin = -5, vmax=5)
+
+#pc = ax.pcolormesh(phi,r,counts.T,cmap="seismic",vmin=0,vmax=50)
 #pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="magma_r",vmin=0,vmax=6000)
-ax.set_title('<entropy>: '+"{0:.2f}".format(av)+' eV cm$^{-3(\gamma -1)}$')
+#ax.set_title('<entropy>: '+"{0:.2f}".format(av)+' eV cm$^{-3(\gamma -1)}$')
 #ax.set_title('<L>: '+"{0:.2f}".format(av)+' kg/m/s')
 #ax.set_title('<density>: '+"{0:.2f}".format(av)+' cm$^{-3}$')
 #ax.set_title('<v$_\phi$>: '+"{0:.2f}".format(av)+' km/s')
@@ -1138,12 +1174,13 @@ ax.set_title('<entropy>: '+"{0:.2f}".format(av)+' eV cm$^{-3(\gamma -1)}$')
 #ax.set_xlabel('Radial Distance (RJ)', rotation = 45, size=12)
 ax.grid(linestyle=':')
 cb = fig.colorbar(pc)
-cb.set_label('log10[entropy (eV cm$^{-3(\gamma-1)}$)]')
+#cb.set_label('log10[entropy (eV cm$^{-3(\gamma-1)}$)]')
 label_position=ax.get_rlabel_position()
-ax.text(np.radians(label_position+30),ax.get_rmax()/2.,'Radial Distance (R$_J$)',rotation=-45,ha='center',va='center')
+ax.text(np.radians(label_position+100),ax.get_rmax()/2.,'Radial Distance (R$_J$)',rotation=+90,ha='center',va='center')
 
 #cb.set_label('log10[density (cm$^{-3}$)]')
-#cb.set_label('v$_\phi$ (km/s)')
+cb.set_label('v$_\phi$ (km/s)')
+#cb.set_label('$<v_\\theta>/\sigma$ (1/CV)')
 #cb.set_label('Temperature (eV)')
 plt.show()
 

@@ -644,8 +644,8 @@ phi_H_He_arr = np.empty(1,dtype=float)
 z_H_He_arr = np.empty(1,dtype=float)
 theta_H_He_arr =np.empty(1,dtype=float)
 
-orbit = 5
-for i in range(orbit,orbit+20):
+orbit = 20
+for i in range(5,23+1):
     orbit = i
     print('Orbit...',orbit)
     timeStart = orbitsData[orbit-1]
@@ -679,6 +679,7 @@ for i in range(orbit,orbit+20):
 
     #jd_h = JEDI_MOM_Data(timeStart,timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments/complete/h5',
     #                     instrument=['p_heavy'])
+
 
     """
     jd_OpS= JEDI_MOM_h5(orbitsData[orbit-2],timeEnd,data_folder='/data/juno_spacecraft/data/jedi_moments/complete/h5',
@@ -816,10 +817,12 @@ for i in range(orbit,orbit+20):
     """
     tpj = jh.t[jh.R == jh.R.min()]
     #wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.data_df.index < tpj[0]) & (jd_OpS.R > 20) & (np.abs(jd_OpS.z_cent) < 4) & (jd_Hp.data_df.Density > 0.0) & (jd_He2p.data_df.Density > 0.0) & (jd_Hp.bc_id == 1)
-    #wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.Req > 10) & (jd_Hp.data_df.Density > 0.0) & (jd_Hp.bc_id == 1) & (jd_He2p.data_df.Density > 0.0)
-    wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.Req > 10) & (jd_He2p.data_df.Density > 0.0) & (jd_Hp.bc_id == 1) & (jd_OpS.data_df.Density > 0.0) & (np.abs(jd_OpS.z_cent) < 2) & (jd_OpS.data_df.index < tpj[0])
+    wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.R > 10) & (jd_Hp.data_df.Density > 0.0) & (jd_Hp.bc_id == 1) & (jd_He2p.data_df.Density > 0.0)
+    #wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.Req > 10) & (jd_He2p.data_df.Density > 0.0) & (jd_Hp.bc_id == 1) & (jd_OpS.data_df.Density > 0.0) & (np.abs(jd_OpS.z_cent) < 2) & (jd_OpS.data_df.index < tpj[0])
     #H_He = jd_Hp.data_df.Density[wh].rolling(10).mean()/jd_He2p.data_df.Density[wh].rolling(10).mean()
-    H_He = jd_He2p.data_df.Density[wh].rolling(10).mean()/jd_OpS.data_df.Density[wh].rolling(10).mean()
+    H_He = jd_He2p.data_df.Density[wh].rolling(10).mean()/jd_Hp.data_df.Density[wh].rolling(10).mean()
+    #H_He = jd_OpS.data_df.P[wh].rolling(10).mean()
+    #H_He = jd_He2p.data_df.Density[wh].rolling(10).mean()/jd_OpS.data_df.Density[wh].rolling(10).mean()
     H_He_arr = np.append(H_He_arr,H_He)
     R_H_He_arr = np.append(R_H_He_arr,jd_Hp.Req[wh])
     phi_H_He_arr = np.append(phi_H_He_arr,myatan2(jd_Hp.y[wh],jd_Hp.x[wh]))
@@ -848,11 +851,12 @@ av_H_He = (sums/counts).T
 phi, r = np.meshgrid(abins, rbins)
 fig, ax = plt.subplots(subplot_kw = dict(projection="polar"))
 pc = ax.pcolormesh(phi,r,av_H_He,cmap="magma_r",vmin=0,vmax=0.5)
+#pc = ax.pcolormesh(phi,r,av_H_He,cmap="magma_r")
 label_position=ax.get_rlabel_position()
-ax.text(np.radians(label_position-57),ax.get_rmax()/2.,'Radial Distance (R$_J$)',rotation=-20,ha='center',va='center')
+ax.text(np.radians(label_position-57),ax.get_rmax()/2.,'Radial Distance (R$_J$)',rotation=-30,ha='center',va='center')
 #ax.set_title('H/He: '+"{0:.4f}".format(av_H_He.mean()))
 ax.grid(linestyle=':')
-ax.set_thetamin(-20)
+ax.set_thetamin(-30)
 ax.set_thetamax(90)
 ax.set_theta_offset(np.pi)
 cb = fig.colorbar(pc)
@@ -867,28 +871,30 @@ abins = np.linspace(-np.pi,np.pi,120)
 R = np.sqrt(R_H_He_arr**2 + z_H_He_arr**2)
 print('R...',R_H_He_arr)
 counts, _, _ = np.histogram2d(theta_H_He_arr, R, bins=(abins,rbins))
-sums, _, _ = np.histogram2d(theta_H_He_arr, R, weights=np.log10(np.abs(H_He_arr)), bins=(abins,rbins))
-#sums, _, _ = np.histogram2d(theta_H_He_arr, R, weights=H_He_arr, bins=(abins,rbins))
+#sums, _, _ = np.histogram2d(theta_H_He_arr, R, weights=np.log10(np.abs(H_He_arr)), bins=(abins,rbins))
+sums, _, _ = np.histogram2d(theta_H_He_arr, R, weights=H_He_arr, bins=(abins,rbins))
 
 phi, r = np.meshgrid(abins, rbins)
 fig, ax = plt.subplots(subplot_kw = dict(projection="polar"))
-ax.set_thetamin(40)
-ax.set_thetamax(-45)
+ax.set_thetamin(90)
+ax.set_thetamax(-90)
 ax.set_theta_offset(-np.pi)
 ax.set_theta_direction(-1)
 
-vmin = -1.5
-vmax = 0.5
+print(np.log10(H_He_arr))
+vmin = 1/100
+vmax = 1/10
 pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="magma_r",vmin=vmin,vmax=vmax)
+#pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="magma_r")
 #pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="seismic",norm=pltclr.SymLogNorm(linthresh = vmax/500, linscale=1.0,vmin=vmin,vmax=vmax))
 #pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="seismic",norm=pltclr.TwoSlopeNorm(vmin=vmin,vcenter=0, vmax=vmax))
 
 #ax.set_title('<L>: '+"{0:.2f}".format(av)+' kg/m/s')
 ax.grid(linestyle=':')
 cb = fig.colorbar(pc)
-cb.set_label('log10[He/O+S]')
+cb.set_label('He/H')
 label_position=ax.get_rlabel_position()
-ax.text(np.radians(label_position+30),ax.get_rmax()/2.,'Radial Distance (R$_J$)',rotation=-40,ha='center',va='center')
+ax.text(np.radians(label_position+100),ax.get_rmax()/2.,'Radial Distance (R$_J$)',rotation=+90,ha='center',va='center')
 plt.show()
 
 """

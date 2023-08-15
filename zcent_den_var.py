@@ -133,9 +133,9 @@ def plot_eq_den(jh,b,orbit):
     sig_max = 1000
     tpj = jh.t[jh.R == jh.R.min()]
     den =  jh.data_df.n.rolling(win).mean().to_numpy()
-    wh = (jh.R > 45) & (jh.R < 50) & (np.logical_not(np.isnan(den))) & (jh.t < tpj[0]) & (abs(jh.z_cent) < 5) & (jh.data_df.n_sig/abs(jh.data_df.n) < sig_max)
+    wh = (jh.R > 15) & (jh.R < 50) & (np.logical_not(np.isnan(den))) & (jh.t < tpj[0]) & (abs(jh.z_cent) < 5) & (jh.data_df.n_sig/abs(jh.data_df.n) < sig_max)
     
-    plt.figure()
+    fig = plt.figure()
     plt.scatter(jh.z_cent[wh],den[wh], s = 5, c = jh.R[wh], cmap='jet')
     plt.colorbar(label='Radial distance (R$_J$)')
     plt.xlabel('$z_{cent}$ ($R_J$)')
@@ -155,7 +155,10 @@ def plot_eq_den(jh,b,orbit):
     print('plasma sheet crossings...')
     print(f'A:{coeff[0]}, mu:{coeff[1]}, sigma:{coeff[2]}\n')
     plt.plot(bin_centers, normal_dist,linewidth=5.0)
+    bin_centers1 = bin_centers
 
+    pickle.dump([fig,jh.z_cent[wh],den[wh], bin_centers, mean, bin_centers1, normal_dist],open('Figure8.pkl','wb'))
+    
     plt.figure()
     
     #plt.plot(jh.R[wh],den[wh]*np.exp((jh.z_cent[wh]-coeff[1])**2/(2*coeff[2]**2)),'.',markersize=1.0)
@@ -238,7 +241,7 @@ def plot_eq_den_b(jh,b,orbit):
     #ax2.plot([b.R[wh].min(),b.R[wh].max()],[0,0],':')
     #wh = (b.R > 30) & (b.R < 60) & (abs(b.z_cent) < 10) 
     #ax2.plot(b_df.index[wh],100*b_df[wh].rolling(10).std(),'.')
-    plt.show()
+    #plt.show()
 
     #plt.figure()
     #bin_means, bin_edges, binnumber = stats.binned_statisics(jh.z_cent[wh],jh.vtheta[wh].rolling(10).s
@@ -254,7 +257,7 @@ def find_max_den(jp,jh):
     win=40
     sig_max = 1000
     maxR = 50
-    minR = 20
+    minR = 15
     
     fig, ax = plt.subplots(2,1,sharex=False)
     fig.set_size_inches((12,8))
@@ -352,7 +355,7 @@ dt_arr = np.empty(1,dtype=float)
 dn_arr = np.empty(1,dtype=float)
 zcent_arr = np.empty(1,dtype=float)
 
-orbit = 5
+orbit = 21
 for i in range(orbit,orbit+1):
 #for i in range(5,26):
     orbit = i
@@ -396,12 +399,13 @@ for i in range(orbit,orbit+1):
     #plot_jp_jh_data(b,jp,jh,j,10,4,orbit,150)
 
     dt, dn, peaks, zcent = find_max_den(jp,jh)
+    print('zcent...',zcent)
     dt_arr = np.append(dt_arr, dt)
     dn_arr = np.append(dn_arr, dn)
     zcent_arr = np.append(zcent_arr,zcent)    
 
-    #plot_eq_den(jh,b,orbit)
-    plot_eq_den_b(jh,b,orbit)
+    plot_eq_den(jh,b,orbit)
+    #plot_eq_den_b(jh,b,orbit)
 
 
 plt.figure()

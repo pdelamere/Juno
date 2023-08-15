@@ -149,8 +149,10 @@ class bc_ids:
         
         index_array = self.t #self.jad_tm
         et_array = [spice.utc2et(i) for i in index_array.strftime('%Y-%m-%dT%H:%M:%S')]
+        #positions, lt = spice.spkpos('JUNO', et_array,
+        #                             'IAU_JUPITER', 'NONE', 'JUPITER')
         positions, lt = spice.spkpos('JUNO', et_array,
-                                     'IAU_JUPITER', 'NONE', 'JUPITER')
+                                     'JUNO_MAG_VIP4', 'NONE', 'JUPITER')
         rad = np.array([])
         lat = np.array([])
         lon = np.array([])
@@ -174,10 +176,12 @@ class bc_ids:
         d = 7.76*deg2rad
         e = 249*deg2rad
         CentEq2 = (a*np.tanh(b*R - c) + d)*np.sin(lon*deg2rad - e)
-        self.z_cent = positions.T[2]/7.14e4 - R*np.sin(CentEq2)
+        #self.z_cent = positions.T[2]/7.14e4 - R*np.sin(CentEq2)
+        self.z_cent = z/7.14e4
         self.R = R
         self.Req = Req
-        
+
+        """
         for year in ['2016', '2017', '2018', '2019', '2020']:
             spice.furnsh(f'/data/juno_spacecraft/data/meta_kernels/juno_{year}.tm')
         
@@ -188,6 +192,7 @@ class bc_ids:
         x = np.array(positions.T[0])
         y = np.array(positions.T[1])
         z = np.array(positions.T[2])
+        """
         
         return x,y,z
 
@@ -1779,7 +1784,7 @@ class JadClass(bc_ids):
     #    return 
 
 
-
+"""
 if __name__ == '__main__':
     start = '2016-07-31T00:00:00'
     end = '2020-11-06T12:00:00'
@@ -1808,7 +1813,7 @@ if __name__ == '__main__':
                          , pickle_file)
             print(f'Saved data from {start_datetime} to {end_datetime}')
             pickle_file.close()
-
+"""
 
 class HuscherClass:
     def __init__(self, timeStart, timeEnd):
