@@ -16,6 +16,7 @@ import pickle
 from scipy import signal 
 import math
 import matplotlib.colors as pltclr
+from pylab import *
 
 myatan2 = np.vectorize(math.atan2)
 
@@ -647,7 +648,7 @@ def get_Lmom(jp,jh,b):
     
 def get_vphi_R(jp,orbit):
     tpj = jp.t[jp.R == jp.R.min()]
-    wh = (jp.data_df.vphi_sig/abs(jp.data_df.vphi) < 10) & (np.abs(jp.z_cent) < 1) & (jp.bc_id == 1) & (jp.R > 10) #& (jp.t < tpj[0])
+    wh = (jp.data_df.vphi_sig/abs(jp.data_df.vphi) < 1) & (np.abs(jp.z_cent) < 1) & (jp.bc_id == 1) & (jp.R > 10) #& (jp.t < tpj[0])
     #wh = (jp.data_df.vphi_sig/abs(jp.data_df.vphi) < 10) & (np.abs(jp.z_cent) < 4) & (jp.R > 10) #& (jp.t < tpj[0])
     #x,y,z = jp.sys_3_data()
     #plt.figure()
@@ -657,7 +658,8 @@ def get_vphi_R(jp,orbit):
 
 def get_vphi_z(jp,orbit):
     tpj = jp.t[jp.R == jp.R.min()]
-    wh = (jp.data_df.vphi_sig/abs(jp.data_df.vphi) < 10) & (jp.bc_id == 1) & (jp.R > 5) 
+    wh = (jp.data_df.n_sig/abs(jp.data_df.n) < 10) & (jp.bc_id == 1) & (jp.R > 5) #& (jp.data_df.vphi < 0)
+    #wh = (abs(jp.data_df.vphi) < 2000) & (jp.bc_id == 1) & (jp.R > 5) #& (jp.data_df.vphi <= 0)
     return jp.data_df.vphi[wh], jp.z_cent[wh], jp.Req[wh]
 
 def get_density_z(jp,orbit):
@@ -1107,6 +1109,15 @@ cb.set_label('vphi (km/s)')
 
 # vphi_z-----------------------------------------------
 
+cmap = cm.get_cmap('coolwarm',500)
+CS_1=[]
+for i in range(cmap.N):
+    rgba = cmap(i)
+    CS_1.append(matplotlib.colors.rgb2hex(rgba))
+C_list = CS_1[:200]
+C_list.extend(CS_1[-200:])
+CS = matplotlib.colors.LinearSegmentedColormap.from_list("",C_list)
+
 plt.figure()
 df = pd.Series(data = np.abs(vphiz_arr), index = z_vphi_arr)
 wh = zR_vphi_arr > 5.0
@@ -1158,8 +1169,13 @@ ax.set_theta_direction(-1)
 #vmax = 6.0
 #pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="seismic",vmin=vmin,vmax=vmax)
 
+wh = retcnt.statistic < 3
+retmean.statistic[wh] = np.nan
+
 #pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="seismic",vmin=-500,vmax=500)
-pc = ax.pcolormesh(phi,r,(retmean.statistic).T,cmap="coolwarm",vmin=-400,vmax=400)
+pc = ax.pcolormesh(phi,r,(retmean.statistic).T,cmap=CS,vmin=-400,vmax=400)
+#pc = ax.pcolormesh(phi,r,100*((retstd.statistic).T/(np.sqrt(retcnt.statistic).T))/abs((retmean.statistic).T),cmap="turbo",vmin = 0, vmax = 100) #norm=pltclr.LogNorm(vmax=100))
+#pc = ax.pcolormesh(phi,r,(retcnt.statistic).T,cmap="turbo",norm=pltclr.LogNorm())
 #pc = ax.pcolormesh(phi,r,(retmean.statistic/retstd.statistic).T,cmap="seismic",vmin = -5, vmax=5)
 
 #pc = ax.pcolormesh(phi,r,counts.T,cmap="seismic",vmin=0,vmax=50)
@@ -1180,6 +1196,8 @@ ax.text(np.radians(label_position+100),ax.get_rmax()/2.,'Radial Distance (R$_J$)
 
 #cb.set_label('log10[density (cm$^{-3}$)]')
 cb.set_label('v$_\phi$ (km/s)')
+#cb.set_label('# data points')
+#cb.set_label('% uncertainty')
 #cb.set_label('$<v_\\theta>/\sigma$ (1/CV)')
 #cb.set_label('Temperature (eV)')
 plt.show()

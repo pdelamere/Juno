@@ -13,7 +13,8 @@ from spacepy import pycdf
 from os import fsdecode
 import os
 import pickle
-from scipy import signal 
+from scipy import signal
+import matplotlib.colors as pltclr
 
 def plot_jp_jh_data(b,jp,jh,j,sig_max,win,orbit,maxR):
 
@@ -817,7 +818,7 @@ for i in range(5,23+1):
     """
     tpj = jh.t[jh.R == jh.R.min()]
     #wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.data_df.index < tpj[0]) & (jd_OpS.R > 20) & (np.abs(jd_OpS.z_cent) < 4) & (jd_Hp.data_df.Density > 0.0) & (jd_He2p.data_df.Density > 0.0) & (jd_Hp.bc_id == 1)
-    wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.R > 10) & (jd_Hp.data_df.Density > 0.0) & (jd_Hp.bc_id == 1) & (jd_He2p.data_df.Density > 0.0)
+    wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.R > 30) & (jd_Hp.data_df.Density > 0.0) & (jd_Hp.bc_id == 1) & (jd_He2p.data_df.Density > 0.0)
     #wh = (jd_OpS.data_df.index > timeStart) & (jd_OpS.Req > 10) & (jd_He2p.data_df.Density > 0.0) & (jd_Hp.bc_id == 1) & (jd_OpS.data_df.Density > 0.0) & (np.abs(jd_OpS.z_cent) < 2) & (jd_OpS.data_df.index < tpj[0])
     #H_He = jd_Hp.data_df.Density[wh].rolling(10).mean()/jd_He2p.data_df.Density[wh].rolling(10).mean()
     H_He = jd_He2p.data_df.Density[wh].rolling(10).mean()/jd_Hp.data_df.Density[wh].rolling(10).mean()
@@ -874,6 +875,9 @@ counts, _, _ = np.histogram2d(theta_H_He_arr, R, bins=(abins,rbins))
 #sums, _, _ = np.histogram2d(theta_H_He_arr, R, weights=np.log10(np.abs(H_He_arr)), bins=(abins,rbins))
 sums, _, _ = np.histogram2d(theta_H_He_arr, R, weights=H_He_arr, bins=(abins,rbins))
 
+#retmean = scipy.stats.binned_statistic_2d(theta_H_He_arr, R, H_He_arr, statistic='mean', bins=[abins,rbins])
+#retcnt = scipy.stats.binned_statistic_2d(theta_H_He_arr, R, H_He_arr, statistic='count', bins=[abins,rbins])
+
 phi, r = np.meshgrid(abins, rbins)
 fig, ax = plt.subplots(subplot_kw = dict(projection="polar"))
 ax.set_thetamin(90)
@@ -881,10 +885,14 @@ ax.set_thetamax(-90)
 ax.set_theta_offset(-np.pi)
 ax.set_theta_direction(-1)
 
+wh = counts < 1
+counts[wh] = np.nan
+
 print(np.log10(H_He_arr))
 vmin = 1/100
 vmax = 1/10
-pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="magma_r",vmin=vmin,vmax=vmax)
+#pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="magma",vmin=vmin,vmax=vmax)
+pc = ax.pcolormesh(phi,r,(counts).T,cmap="turbo",norm=pltclr.LogNorm())
 #pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="magma_r")
 #pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="seismic",norm=pltclr.SymLogNorm(linthresh = vmax/500, linscale=1.0,vmin=vmin,vmax=vmax))
 #pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="seismic",norm=pltclr.TwoSlopeNorm(vmin=vmin,vcenter=0, vmax=vmax))
@@ -892,7 +900,8 @@ pc = ax.pcolormesh(phi,r,(sums/counts).T,cmap="magma_r",vmin=vmin,vmax=vmax)
 #ax.set_title('<L>: '+"{0:.2f}".format(av)+' kg/m/s')
 ax.grid(linestyle=':')
 cb = fig.colorbar(pc)
-cb.set_label('He/H')
+#cb.set_label('He$^{n+}$/H$^+$')
+cb.set_label('# data points')
 label_position=ax.get_rlabel_position()
 ax.text(np.radians(label_position+100),ax.get_rmax()/2.,'Radial Distance (R$_J$)',rotation=+90,ha='center',va='center')
 plt.show()
